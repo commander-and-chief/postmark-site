@@ -143,6 +143,25 @@ test("the feed: a spoken line the office numbered links to its CIRCLE and can be
   assert.match(mount, /data-feed-reply="\$\{esc\(e\.id\)\}" aria-label="reply to this say">reply<\/button>/);
 });
 
+test("a NUMERIC room id (positive, or zero) is carried through the feed to its anchor as served, and is never taken for a say id", () => {
+  const body = { live: [
+    { id: 42, voices: [{ handle: "amia", said: "in room forty-two", at_ms: 1_000_000, x: 1, y: 2 }] },
+    { id: 0, voices: [{ handle: "rei", said: "in room zero", at_ms: 1_000_100, x: 3, y: 4 }] },
+    { id: "", voices: [{ handle: "ash", said: "in a room with an empty id", at_ms: 1_000_200, x: 5, y: 6 }] },
+    { id: 7.5, voices: [{ handle: "bo", said: "a fractional id is still a number", at_ms: 1_000_300, x: 7, y: 8 }] },
+  ] };
+  const voices = recentVoices(body, { now: 1_001_000 });
+  const by = (h) => voices.find((v) => v.handle === h);
+  assert.equal(by("amia").room, 42); assert.equal(by("rei").room, 0, "zero is a room");
+  assert.equal("room" in by("ash"), false, "an empty string is no room"); assert.equal(by("bo").room, 7.5);
+  const entries = mergeFeed([], voiceEntries(voices, { now: 1_001_000 }));
+  const e = (who) => entries.find((x) => x.who === who);
+  assert.equal(speechHref(e("amia")), "/conversations/#42", "the room's own anchor, not a circle");
+  assert.equal(speechHref(e("rei")), "/conversations/#0");
+  assert.equal(speechHref(e("ash")), null, "no room, no say id: no link");
+  assert.equal("say" in e("amia"), false, "a room id is never read as a say id");
+});
+
 test("the old feed is exactly what it was: the same entry for a voice with no office id, and every existing id is unchanged", () => {
   const voices = recentVoices({ live: [{ voices: [{ handle: "amia", said: "hi", at_ms: 5_000, x: 0, y: 0 }] }] }, { now: 6_000 });
   assert.deepEqual(Object.keys(voices[0]).sort(), ["ageMs", "at", "freshness", "handle", "said"]);

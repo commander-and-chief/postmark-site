@@ -30,7 +30,7 @@ import residents from "@/data/postmark/residents.json";
 import households from "@/data/postmark/households.json";
 import { buildHouses, nameplate } from "@/lib/houses.mjs";
 import {
-  EVENT_WORDS, allEventViews, eventForPage, eventParams, eventSections, evidenceRead, legacyEventHref, roomHref, roomIdOf, utcText,
+  EVENT_WORDS, allEventViews, eventForPage, eventParams, eventSections, evidenceRead, isRoomId, legacyEventHref, roomHref, roomIdOf, utcText,
 } from "@/lib/calendar.mjs";
 import { rsvpGate, BUDGET_DEFAULT, BUDGET_MAX, COALESCE_MIN } from "@/lib/rsvp.mjs";
 import { newestFirst } from "@/lib/announcements.mjs";
@@ -60,7 +60,7 @@ const householdLine = (id) => {
   return { text: key, href: null };
 };
 const rooms = sections.circles.state === "rooms" ? sections.circles.rooms : [];
-const roomIds = rooms.map(roomIdOf).filter(Boolean);
+const roomIds = rooms.map(roomIdOf).filter(isRoomId);
 const roll = new Set(residents.map((r) => r.handle));
 // phase and cancelled are the office's, as the build read them; the office
 // judges again when the form posts.
@@ -149,7 +149,7 @@ const preview = handlesPreview([event.host], new Map(residents.map((r) => [r.han
           <>
             {sections.circles.history === "folded" && <p class="soft ev-note" data-ev-note="folded">Some of the oldest talk is folded; each circle says what is behind it.</p>}
             <div class="ev-rooms">
-              {rooms.map((room) => ({ id: roomIdOf(room), place: typeof room?.place === "string" && room.place.trim() ? room.place.trim() : null })).filter((r) => r.id).map(({ id, place }) => (
+              {rooms.map((room) => ({ id: roomIdOf(room), place: typeof room?.place === "string" && room.place.trim() ? room.place.trim() : null })).filter((r) => isRoomId(r.id)).map(({ id, place }) => (
                 <div class="ev-room" data-ev-room={id}>
                   <h3 class="ev-room-h"><a href={roomHref(id)}>{place ?? id}</a>{place && <span class="ev-room-id soft"> {id}</span>}</h3>
                   <div class="ev-reader" data-ev-reader>
@@ -178,7 +178,8 @@ const preview = handlesPreview([event.host], new Map(residents.map((r) => [r.han
             ? <div class="ev-gallery">{sections.gallery.sparks.map((s) => <SparkCard spark={s} roll={roll} />)}</div>
             : <p class="ev-note" data-ev-note="none">{EVENT_WORDS.gallery.none}</p>)
           : <p class="ev-note" data-ev-note="unknown">{EVENT_WORDS.gallery.unknown}{sections.gallery.note && <> <span class="soft">({sections.gallery.note})</span></>}</p>}
-        {sections.gallery.state === "known" && sections.gallery.complete === false && <p class="soft ev-basis">{EVENT_WORDS.gallery.sofar}</p>}
+        {sections.gallery.state === "known" && sections.gallery.complete === false && <p class="soft ev-basis" data-ev-complete="so-far">{EVENT_WORDS.gallery.sofar}</p>}
+        {sections.gallery.state === "known" && sections.gallery.complete === null && <p class="soft ev-basis" data-ev-complete="unknown">{EVENT_WORDS.gallery.unsure}</p>}
       </section>
     )}
 
@@ -272,7 +273,7 @@ const preview = handlesPreview([event.host], new Map(residents.map((r) => [r.han
     import { AS, KEYS, officeBase, tokenIsFresh } from "@/lib/auth.mjs";
     import { handleChoice, rsvpBody, submitRsvp, SECRET_LINE } from "@/lib/rsvp.mjs";
     import { fetchAnnouncements, eventReadUrl } from "@/lib/announcements.mjs";
-    import { EVENT_WORDS, LOCAL_FORMAT, eventSections, roomHref, roomIdOf } from "@/lib/calendar.mjs";
+    import { EVENT_WORDS, LOCAL_FORMAT, eventSections, isRoomId, roomHref, roomIdOf } from "@/lib/calendar.mjs";
     import { mountRoom } from "@/lib/circle-reader-mount.mjs";
 
     // THE CIRCLES ISLAND (CORE-82). The page's rooms are the office's, in its start order. For each, the World's one circle reader is
@@ -311,7 +312,7 @@ const preview = handlesPreview([event.host], new Map(residents.map((r) => [r.han
             const s = body?.event ? eventSections(body.event) : null;
             if (s?.circles.state === "rooms") {
               if (!circ.querySelector(".ev-rooms")) { circ.querySelector("[data-ev-note]")?.remove(); const w = document.createElement("div"); w.className = "ev-rooms"; circ.append(w); circ.dataset.state = "rooms"; }
-              build(s.circles.rooms.map(roomIdOf).filter(Boolean));
+              build(s.circles.rooms.map(roomIdOf).filter(isRoomId).map(String));
             }
           } catch { /* the build's rooms stand */ }
         }

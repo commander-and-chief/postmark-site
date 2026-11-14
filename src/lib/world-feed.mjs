@@ -469,7 +469,7 @@ export function voiceEntries(voices, opts = {}) {
         // CORE-82: the office's additive say id and the room's id, as served (recentVoices), so a line can link to its circle and be replied to.
         // Absent on old talk; the entry is then exactly what it was.
         ...(Number.isSafeInteger(v.id) && v.id > 0 ? { say: { id: v.id } } : {}),
-        ...(typeof v.room === "string" && v.room ? { room: v.room } : {}),
+        ...((typeof v.room === "string" && v.room !== "") || (typeof v.room === "number" && Number.isFinite(v.room)) ? { room: v.room } : {}),
       };
     });
 }

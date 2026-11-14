@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  EVENT_WORDS, allEventViews, eventForPage, eventHref, eventSections, evidenceRead, legacyEventHref, pictureOf, roomHref, roomIdOf,
+  EVENT_WORDS, allEventViews, eventForPage, eventHref, eventSections, evidenceRead, isRoomId, legacyEventHref, pictureOf, roomHref, roomIdOf,
 } from "../src/lib/calendar.mjs";
 import { EMPTY_EVENTS, EMPTY_CALENDAR, fetchEvents, fetchPastEvents, fetchEventEvidence, DATA_FILES, EVENTS_GAP } from "../tools/lib/fetch-town-data.mjs";
 import { READER_MODULE, circleUrl, loadReader, mountRoom, mountRooms, officeSource, roomUrl } from "../src/lib/circle-reader-mount.mjs";
@@ -117,6 +117,26 @@ test("before the doors open there is no evidence and the page says so; a running
   assert.deepEqual([cancelled.present.state, cancelled.spark.state, cancelled.gallery.state], ["unknown", "unknown", "unknown"]);
   // a phase that is not 'announced' with NO evidence is unavailable, never 'before' (the page does not read a clock)
   assert.equal(eventSections({ ...page(COMING), phase: "underway" }).circles.state, "unavailable");
+});
+
+test("room ids are opaque string-or-number values: a positive number and zero survive, an empty string or a non-id is none, and no say id is inferred", () => {
+  assert.equal(isRoomId("t1-pica"), true); assert.equal(isRoomId(7), true); assert.equal(isRoomId(0), true, "zero is a number, not an absence");
+  for (const bad of ["", null, undefined, NaN, Infinity, {}, [], true]) assert.equal(isRoomId(bad), false, `${String(bad)} is no room id`);
+  assert.equal(roomIdOf(7), 7, "a bare numeric coverage id"); assert.equal(roomIdOf(0), 0);
+  assert.equal(roomIdOf({ id: 42, place: "x" }), 42, "a header's numeric id, as served"); assert.equal(roomIdOf({ id: 0 }), 0);
+  assert.equal(roomIdOf({ id: "" }), null); assert.equal(roomIdOf({ place: "no id" }), null); assert.equal(roomIdOf(null), null);
+  assert.equal(roomHref(0), "/conversations/#0"); assert.equal(roomHref(42), "/conversations/#42");
+  // a room id is never a circle: no #circle- anchor is made from it
+  assert.equal(roomHref(42).includes("circle-"), false);
+});
+
+test("an ABSENT completion flag on a served gallery is unknown, never complete; true and false stay literal", () => {
+  const ev = (complete) => ({ id: "h/s", phase: "ended", cancelled: false, evidence: { rooms: [], room_history: "complete", present: [], spark: null, gallery: { rooms: [], sparks: [] }, ...(complete === undefined ? {} : { complete }) } });
+  assert.equal(eventSections(ev(true)).gallery.complete, true);
+  assert.equal(eventSections(ev(false)).gallery.complete, false);
+  assert.equal(eventSections(ev(undefined)).gallery.complete, null, "absent: unknown");
+  assert.equal(eventSections(ev("yes")).gallery.complete, null, "a non-boolean is not a claim either");
+  assert.equal(eventSections(ev(undefined)).complete, false, "and the page-level flag is true only when the office said true");
 });
 
 test("a spark's picture is drawn only from a site path or an https address; anything else is no picture", () => {
@@ -361,6 +381,10 @@ test("BUILT: each state is its own sentence: known none, unknown, a claim not ac
   assert.equal(c.includes("data-ev-spark"), false, "no spark section before the event");
   const live = eventHtml(LIVE);
   assert.match(live, /data-ev-circles[^>]*data-live/, "a running event refreshes its rooms from the office");
+  // a room whose id is the NUMBER 0 is a room: drawn, linked, and mounted by its id, never lost to a truthiness check
+  const circ = section(live, "data-ev-circles");
+  assert.deepEqual([...circ.matchAll(/data-ev-room="([^"]+)"/g)].map((m) => m[1]), ["t1794686460000-walker-test", "0"], "both rooms, the numeric one included, in the office's order");
+  assert.ok(circ.includes('href="/conversations/#0"'), "the numeric room links to its own anchor");
   assert.equal(live.includes("data-ev-gallery"), false, "no gallery while it is on");
   assert.match(textOf(live), /RSVP/); assert.match(live, /data-rsvp-how/, "its RSVP doors are as they were");
   assert.equal(eventHtml(SUPPER).includes("data-rsvp-how"), false, "an ended event does not teach how to RSVP");

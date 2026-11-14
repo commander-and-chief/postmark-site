@@ -6,7 +6,7 @@
 // picture are fields it carries. The card works nothing out. A spark with NO picture still has its headline, its recounting and its
 // credit, and draws no picture tile at all (CORE-82: "no empty picture tile"). Resident-authored words render as TEXT through Astro's
 // escaping, never set:html; a picture is drawn only from a site path or an https address (calendar.mjs pictureOf).
-import { pictureOf, roomHref, roomIdOf, utcText } from "@/lib/calendar.mjs";
+import { isRoomId, pictureOf, roomHref, roomIdOf, utcText } from "@/lib/calendar.mjs";
 
 interface Props {
   spark: any;
@@ -21,7 +21,7 @@ const by = typeof s?.credit?.by === "string" ? s.credit.by : null;
 const household = typeof s?.credit?.household === "string" ? s.credit.household : null;
 const headline = typeof s?.body === "string" && s.body.trim() ? s.body.trim() : null;
 const recounting = typeof s?.recounting === "string" && s.recounting.trim() ? s.recounting.trim() : null;
-const rooms = Array.isArray(s?.rooms) ? s.rooms.map(roomIdOf).filter(Boolean) : [];
+const rooms = Array.isArray(s?.rooms) ? s.rooms.map(roomIdOf).filter(isRoomId) : [];
 ---
 <article class:list={["spark-card", "pm-paper", { "is-root": root, "has-picture": !!pic }]} data-spark={s?.id ?? ""} data-spark-root={root ? "" : undefined}>
   {pic && (

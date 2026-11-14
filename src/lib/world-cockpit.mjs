@@ -1293,8 +1293,9 @@ export function saidNotes(body) {
 export function speechHref(entry) {
   const id = replyTargetOf({ id: entry?.say?.id })?.id;
   if (id) return `/conversations/#circle-${id}`;
-  const room = typeof entry?.room === "string" && entry.room ? entry.room : null;
-  return room ? `/conversations/#${encodeURIComponent(room)}` : null;
+  const r = entry?.room;
+  const room = (typeof r === "string" && r !== "") || (typeof r === "number" && Number.isFinite(r)) ? r : null;     // opaque: string or number, 0 included
+  return room !== null ? `/conversations/#${encodeURIComponent(String(room))}` : null;
 }
 
 /**
@@ -1890,7 +1891,8 @@ export function recentVoices(body, opts = {}) {
         // THE OFFICE'S ADDITIVE SAY FIELDS (CORE-82), carried as served and never worked out: the say's act number, and the room's id
         // (the conversations page's anchor). Old unthreaded talk carries neither, and the voice is then exactly what it was.
         ...(Number.isSafeInteger(v.id) && v.id > 0 ? { id: v.id } : {}),
-        ...(typeof t.id === "string" && t.id ? { room: t.id } : {}),
+        // an OPAQUE room id: a non-empty string or a finite number (0 is a number), carried as served and never read as a say id
+        ...((typeof t.id === "string" && t.id !== "") || (typeof t.id === "number" && Number.isFinite(t.id)) ? { room: t.id } : {}),
         at: { x: v.x, y: v.y },
         ageMs: age,
         // 1 at the moment it was said, 0 as it leaves — the door's own fade,

@@ -1063,8 +1063,9 @@ export async function buildOfficeData({
   const calendar = calendarRead.missing ? readSnapshot("calendar.json", EMPTY_CALENDAR) : calendarRead.calendar;
   if (calendarRead.missing) endpointGaps.push(CALENDAR_GAP);
 
-  // THE LASTING EVENTS (CORE-82): the past-events list and each event's evidence, kept beside the calendar. Never fatal: a door that
-  // is not live says "unavailable" in the file and a gap here, and the committed snapshot's events stand.
+  // THE LASTING EVENTS (CORE-82): the past-events list and each event's evidence, kept beside the calendar. A door that
+  // is not live (400/404/405/422: it does not know `past`) says "unavailable" in the file and a gap here, and the committed snapshot's events
+  // stand. Any other failure of the LIST (a 5xx, a timeout, a body that is not the list) fails the build, exactly as the calendar's own read does; one event's own read that fails is "unavailable" for that event.
   const eventsRead = await fetchEvents({ apiBase, fetchImpl, retries, gate, calendar, snapshot: readSnapshot("events.json", EMPTY_EVENTS) });
   endpointGaps.push(...eventsRead.gaps);
 

@@ -149,7 +149,8 @@
             "window": { "from": "2026-11-14T20:00:00.000Z", "to": "2026-11-14T23:00:00.000Z", "as_of": "2026-11-14T21:00:00.000Z" },
             "complete": false,
             "rooms": [
-              { "id": "t1794686460000-walker-test", "live": true, "place": "The Quay Steps", "at": { "x": 12, "y": 40 }, "started": "2026-11-14T20:10:00.000Z", "latest": "2026-11-14T20:55:00.000Z", "participants": ["walker-test", "lanternkeeper-test"], "voice_count": 6, "frame": { "room": "t1794686460000-walker-test", "at": { "x": 12, "y": 40 }, "extent": { "w": 30, "h": 20 } } }
+              { "id": "t1794686460000-walker-test", "live": true, "place": "The Quay Steps", "at": { "x": 12, "y": 40 }, "started": "2026-11-14T20:10:00.000Z", "latest": "2026-11-14T20:55:00.000Z", "participants": ["walker-test", "lanternkeeper-test"], "voice_count": 6, "frame": { "room": "t1794686460000-walker-test", "at": { "x": 12, "y": 40 }, "extent": { "w": 30, "h": 20 } } },
+              { "id": 0, "live": true, "place": "The Numbered Room (invented: a numeric room id, zero)", "at": { "x": 14, "y": 41 }, "started": "2026-11-14T20:30:00.000Z", "latest": "2026-11-14T20:40:00.000Z", "participants": ["walker-test"], "voice_count": 1 }
             ],
             "room_history": "complete",
             "present": ["hh:lantern-test-house", "hh:walker-test-house"],

@@ -163,7 +163,8 @@ export function eventSections(event) {
   // the gallery: accepted child sparks across every covered room; null is unknown (never an empty gallery)
   let gallery;
   if (isObj(ev.gallery) && Array.isArray(ev.gallery.sparks)) {
-    gallery = { state: "known", rooms: Array.isArray(ev.gallery.rooms) ? ev.gallery.rooms : [], sparks: ev.gallery.sparks, complete: ev.complete !== false, note: typeof ev.gallery_note === "string" ? ev.gallery_note : null };
+    // `complete` is the producer's own flag: true is complete, false is "so far", and an ABSENT or non-boolean flag is UNKNOWN (null), never complete
+    gallery = { state: "known", rooms: Array.isArray(ev.gallery.rooms) ? ev.gallery.rooms : [], sparks: ev.gallery.sparks, complete: typeof ev.complete === "boolean" ? ev.complete : null, note: typeof ev.gallery_note === "string" ? ev.gallery_note : null };
   } else gallery = { state: "unknown", note: typeof ev.gallery_note === "string" ? ev.gallery_note : null };
   return { ...out, circles, present, spark, gallery, window: isObj(ev.window) ? ev.window : null, complete: ev.complete === true };
 }
@@ -185,8 +186,17 @@ export function pictureOf(spark) {
 /** A room's anchor on the conversations page: the one place the whole transcript lives. */
 export const roomHref = (id) => `/conversations/#${encodeURIComponent(String(id ?? ""))}`;
 
-/** The id a room header carries (the office's thread header: `{ id, … }`, or a bare id in the gallery's coverage list). */
-export const roomIdOf = (room) => (typeof room === "string" ? room : room?.id ?? null);
+/**
+ * A room id is OPAQUE: a non-empty string or a finite number (`room.id` may be numeric, and 0 is a number, not an absence). Tested by type, never by
+ * truthiness, and never read as a say id.
+ */
+export const isRoomId = (v) => (typeof v === "string" && v !== "") || (typeof v === "number" && Number.isFinite(v));
+
+/** The id a room header carries (the office's thread header: `{ id, … }`, or a bare id in the gallery's coverage list), as served: string or number. */
+export const roomIdOf = (room) => {
+  const id = isRoomId(room) ? room : isObj(room) ? room.id : null;
+  return isRoomId(id) ? id : null;
+};
 
 /**
  * The words of the event page's states, one table, so the baked page and its island read the same sentences and the tests pin them.
@@ -223,6 +233,7 @@ export const EVENT_WORDS = Object.freeze({
     none: "No accepted sparks yet from the talk at this event.",
     unknown: "The gallery couldn't be read just now, so this page cannot say whether it is empty.",
     sofar: "These are the sparks so far; the event is still on.",
+    unsure: "The office did not say whether this is every spark, so it may not be all of them.",
   },
   past: {
     title: "Past events",
