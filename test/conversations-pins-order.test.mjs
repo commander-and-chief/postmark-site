@@ -170,7 +170,7 @@ async function openPage({ width, height = 900, signedIn = true }) {
   await S("Page.enable");
   await S("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width < 600 });
   // a dry identity: a made-up token in localStorage, read by the page's own boot(); /api/me is answered below. Nothing real signs in.
-  const seed = `try { localStorage.setItem("pm.office.base", "/api"); ${signedIn ? `localStorage.setItem("pm.oauth.token", JSON.stringify({ access_token: "invented-token", obtained: Date.now(), expires_in: 3600 }));` : ""} } catch (e) {}`;
+  const seed = `try { localStorage.setItem("pm.office.base", "/api"); ${signedIn ? `localStorage.setItem("pm.oauth.token", JSON.stringify({ access_token: "invented-token", obtained: Date.now(), expires_in: 3600 }));` : `localStorage.removeItem("pm.oauth.token");`} } catch (e) {}`;
   await S("Page.addScriptToEvaluateOnNewDocument", { source: seed });
   await S("Fetch.enable", { patterns: [{ urlPattern: "*/api/*", requestStage: "Request" }] });
   const fulfil = (requestId, code, body) => S("Fetch.fulfillRequest", { requestId, responseCode: code, responseHeaders: [{ name: "content-type", value: "application/json" }, { name: "cache-control", value: "no-store" }], body: Buffer.from(body).toString("base64") }).catch(() => {});
@@ -192,7 +192,8 @@ async function openPage({ width, height = 900, signedIn = true }) {
   };
   const until = async (predicateJs, what, ms = 20_000) => {
     for (const t0 = Date.now(); Date.now() - t0 < ms;) { if (await evalJs(predicateJs)) return; await new Promise((ok) => setTimeout(ok, 100)); }
-    throw new Error(`timed out waiting for ${what}`);
+    const seen = await evalJs(`JSON.stringify({ pins: document.querySelectorAll("[data-pinned] .c-pin").length, threads: document.querySelectorAll(".c-thread").length, out: document.querySelector("[data-say-signedout]")?.hidden, visitor: document.querySelector("[data-say-visitor]")?.hidden, form: document.querySelector("[data-say-form]")?.hidden, token: !!localStorage.getItem("pm.oauth.token") })`).catch((e) => String(e));
+    throw new Error(`timed out waiting for ${what} (the page had: ${seen})`);
   };
   const key = async (k, code, vk) => {
     await S("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk });
@@ -215,7 +216,7 @@ for (const [label, width] of [["desktop 1280", 1280], ["phone 390", 390]]) {
     office.pins = [pin(1), pin(2), pin(3), pin(4)];
     const p = await openPage({ width });
     try {
-      await p.until(`document.querySelectorAll("[data-pinned] .c-pin").length === 4 && !document.querySelector("[data-say-form]").hidden && document.querySelectorAll(".c-thread").length >= 2`, "the pins, the form and the threads to paint");
+      await p.until(`document.querySelectorAll("[data-pinned] .c-pin").length === 4 && document.querySelector("[data-say-form]")?.hidden === false && document.querySelectorAll(".c-thread").length >= 2`, "the pins, the form and the threads to paint");
       const L = await p.evalJs(LAYOUT);
       assert.equal(L.pinCards, 4);
       assert.equal(L.forms, 1, "one speaking form on the page (not duplicated)");
@@ -233,7 +234,7 @@ test("POS-1047: with NO pins the container is hidden and leaves no dead space; t
   office.pins = [];
   const p = await openPage({ width: 1280 });
   try {
-    await p.until(`!document.querySelector("[data-say-form]").hidden && document.querySelectorAll(".c-thread").length >= 2`, "the form and the threads to paint");
+    await p.until(`document.querySelector("[data-say-form]")?.hidden === false && document.querySelectorAll(".c-thread").length >= 2`, "the form and the threads to paint");
     await new Promise((ok) => setTimeout(ok, 500));
     const L = await p.evalJs(LAYOUT);
     assert.equal(L.pinCards, 0);
@@ -279,8 +280,10 @@ test("POS-1047: the keyboard path through the box is unchanged: the voice select
     await p.key("Tab", "Tab", 9);
     assert.equal(await p.evalJs(`document.activeElement === document.querySelector("[data-say-send]")`), true, "and then to Speak");
     // the box can be brought into view and clicked by a finger: its centre is the topmost thing at that point
-    const hit = await p.evalJs(`(() => { const t = document.querySelector("[data-say-text]"); t.scrollIntoView({ block: "center" }); const r = t.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e === t; })()`);
-    assert.equal(hit, true, "nothing covers the text box once it is scrolled to");
+    await p.evalJs(`document.querySelector("[data-say-text]").scrollIntoView({ block: "center", behavior: "instant" }); true`);
+    await new Promise((ok) => setTimeout(ok, 600));     // a page with smooth scrolling arrives over a few frames
+    const hit = await p.evalJs(`(() => { const t = document.querySelector("[data-say-text]"); const r = t.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e === t ? "the text box" : (e ? e.tagName + "." + e.className + " [" + [r.left, r.top, r.right, r.bottom].map(Math.round) + "] in " + innerWidth + "x" + innerHeight : "nothing"); })()`);
+    assert.equal(hit, "the text box", "nothing covers the text box once it is scrolled to");
     assert.equal(office.sayCalls, 0, "no resident act");
   } finally { await p.close(); }
 });
