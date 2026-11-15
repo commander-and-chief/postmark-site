@@ -36,7 +36,7 @@
 //     gone; each teaser now links the posting's own page, `noticePath(b.slug)`
 //     at town/pages/index.astro:383, a static page and no anchor at all.)
 //   · Links built in script, e.g. `var RECORDS = { "illuminator-name":
-//     "/bulletin/#name-the-illuminator" }` (town/pages/votes/index.astro:127).
+//     "/bulletin/#name-the-illuminator" }` (src/lib/votes-render.mjs § RECORDS, drawn on /votes/).
 //     Same target as a real href below, so the class is already on the record.
 //   · Off-site links. Another site's anchors are not ours to hold.
 
@@ -241,10 +241,13 @@ test("the civic hub's quest link names the page that renders the board (#2506)",
   // standings rows the link sat under. "The full board" now opens
   // /town/quests/, which lists every row. A link with no fragment is invisible
   // to the fragment law above, so the page's existence is asked here.
-  assert.ok(hub.includes('<a href="/town/quests/">the full board</a>'),
-    "`the full board` no longer names /town/quests/, the page that lists every standings row");
+  // Until 2026-11-09 (POS-967) the link read `the full board` and the page
+  // listed the quest standings; Ferry's Hall of Fame replaced both, and the
+  // link keeps its destination.
+  assert.ok(hub.includes('<a href="/town/quests/">the full Hall of Fame</a>'),
+    "`the full Hall of Fame` no longer names /town/quests/, the page that draws the whole board");
   assert.ok(existsSync(join(PAGES, "town", "quests", "index.astro")),
-    "/town/quests/ has no page, so `the full board` is a 404");
+    "/town/quests/ has no page, so `the full Hall of Fame` is a 404");
   // and the full board's way back lands on an id that exists
   const full = sourceOf(join(PAGES, "town", "quests", "index.astro"));
   assert.ok(full.includes('href="/town/#quests"'), "/town/quests/ lost its way back to the Guild");

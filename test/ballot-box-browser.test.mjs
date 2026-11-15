@@ -255,6 +255,29 @@ test("POS-1054 (lead FIX): an unreadable design list is said to be unreadable (n
   assert.match(huge.text, /unreadable/);
 });
 
+test("POS-1054 (merge with main's POS-983 / POS-502): a ballot's title and body, each choice's credit, note, https-only link and backing households, and the stake form's slot on STAYING ballots only, all survive in the sectioned page", { skip: SKIP, timeout: 120_000 }, async () => {
+  await boot();
+  office.answer = ok([
+    { topic: "hearth-names", title: "Name the Hearth", body: "Pick the name the town will use.\nSee https://example.test/hearth, then stake.", status: "staking", cap_per_household_per_candidate: 20, window: "w",
+      candidates: [{ candidate: "Emberlight", staked: 14, credit: "wren", note: "warm", link: "https://example.test/ember", backing_households: 3 }, { candidate: "Kettle", staked: 0, link: "javascript:alert(1)", backing_households: 1 }] },
+    topic("closed-one", "closed", [cand("Old", 2)]),
+  ]);
+  const p = await openPage();
+  try {
+    await p.until(`document.querySelector("[data-section=staking]") !== null`, "the board");
+    const d = await p.evalJs(`(() => { const t = document.querySelector("[data-topic=hearth-names]"); return { h: t.querySelector("h3").textContent, body: [...t.querySelectorAll(".v-body")].map((e) => e.textContent), bodyLinks: [...t.querySelectorAll(".v-body a")].map((a) => a.href), words: [...t.querySelectorAll(".v-cand")].map((c) => c.querySelector(".v-cand-words")?.textContent ?? null), links: [...t.querySelectorAll(".v-cand-link")].map((a) => a.href), slot: !!t.querySelector("[data-stake-slot=hearth-names]"), closedSlot: !!document.querySelector("[data-topic=closed-one] [data-stake-slot]"), tie: t.textContent.includes("more backing households breaks a tie"), pwned: typeof window.__x }; })()`);
+    assert.equal(d.h, "Name the Hearth", "the ballot's own title");
+    assert.deepEqual(d.body, ["Pick the name the town will use.", "See https://example.test/hearth, then stake."]);
+    assert.deepEqual(d.bodyLinks, ["https://example.test/hearth"], "an https address in the body is a link");
+    assert.equal(d.words[0], "by wren · warm · see it → · 3 households backing");
+    assert.equal(d.words[1], "1 household backing", "a javascript: link is never drawn");
+    assert.deepEqual(d.links, ["https://example.test/ember"]);
+    assert.equal(d.slot, true, "a staking ballot carries the stake form's slot");
+    assert.equal(d.closedSlot, false, "a closed one does not");
+    assert.equal(d.tie, true);
+  } finally { await p.close(); }
+});
+
 for (const [name, width] of [["desktop 1280", 1280], ["phone 390", 390]]) {
   test(`POS-1054 (${name}): the board fits the view, and the how-to names the doors and the two things a stake needs`, { skip: SKIP, timeout: 120_000 }, async () => {
     await boot();

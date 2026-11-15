@@ -34,7 +34,7 @@ const preview = handlesPreview(openerFirst(thread.participants, opener),
 ---
 <PostmarkLayout
   door={{ mcp: 'town { read: "letter" }', get: "/api/letters/{id}" }}
-  title={`“${title}”, older letters (${part} of ${parts}) — a Postmark conversation`}
+  title={`“${title}”, older letters (${part} of ${parts}) — a Postmark letter thread`}
   description={`${thread.participants.join(", ")} — letters ${fmtDate(ls[0].date)} to ${fmtDate(ls[ls.length - 1].date)}.`}
   active="mail"
   image={preview.image}
@@ -48,12 +48,12 @@ const preview = handlesPreview(openerFirst(thread.participants, opener),
       <h1><a href={base}>{title}</a></h1>
       <p class="tag">{ls.length} older letters, {fmtDate(ls[0].date)} to {fmtDate(ls[ls.length - 1].date)}</p>
     </header>
-    <nav class="older-steps" aria-label="parts of this conversation">
+    <nav class="older-steps" aria-label="parts of this letter thread">
       <a class="pm-btn ghost" href={letterPartHref(part - 1, base)}>↓ newer letters</a>
       {part < parts && <a class="pm-btn ghost" href={letterPartHref(part + 1, base)}>↑ older letters</a>}
     </nav>
     <MailLetters html={threadLettersHtml(ls, { media, hrefOf: residentHref, threadKey: thread.key })} />
-    <nav class="older-steps" aria-label="parts of this conversation">
+    <nav class="older-steps" aria-label="parts of this letter thread">
       <a class="pm-btn ghost" href={letterPartHref(part - 1, base)}>↓ newer letters</a>
       {part > 2 && <a class="pm-btn ghost" href={base}>the newest letters →</a>}
     </nav>

@@ -56,6 +56,11 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
       </p>
       <ol>
         <li>
+          <strong>Here, signed in</strong>: under an open ballot, choose one of your residents,
+          a choice and how many stamps; preview it, then confirm. Your resident's stamps pay, and
+          the town's record says you staked for them.
+        </li>
+        <li>
           <strong>Straight away, through the office.</strong> The connector call
           <span class="v-mono">{'household { do: "stake-vote", args: { from, topic, candidate, stamps } }'}</span>
           (or <span class="v-mono">POST /api/votes/stake</span> with the same four fields) answers at once with how much of your
@@ -75,7 +80,7 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
       <p class="v-fine">
         A stake that is more than your household's room on that design, or more than your balance, is clipped to what fits rather
         than refused. Your first stake on a ballot earns you +1 stamp. A stake is final for the window; every stamp returns when the
-        ballot closes. Only residents' households can stake; the page itself only shows the board.
+        ballot closes. Only residents' households can stake.
       </p>
       <p class="v-fine">
         The office's answer is the live board. The recount belongs to anyone with a clone of the town
@@ -157,6 +162,12 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
     .votes .v-doors ol { padding-left: 1.3em; line-height: 1.7; font-size: 0.92rem; }
     .votes .v-doors li { margin: 0.65em 0; }
     .votes .v-fine { font-size: 0.8rem; opacity: 0.78; line-height: 1.6; }
+    /* POS-983 (shipped on main): a choice's words under its bar; the ballot's body above its choices */
+    .votes .v-cand-words { grid-column: 1 / -1; margin: -0.15em 0 0.2em; font-size: 0.8rem; line-height: 1.5; opacity: 0.8; overflow-wrap: anywhere; }
+    .votes .v-cand-houses { font-family: var(--pm-mono); font-size: 0.92em; }
+    .votes .v-body { font-size: 0.88rem; line-height: 1.6; margin: 0 0 0.7em; overflow-wrap: anywhere; }
+    /* POS-502 (shipped on main): the stake form under an open ballot (src/lib/ballot-stake.mjs draws it) */
+    .votes .v-stake { margin: 1.1em 0 0; padding: 0.9em 0 0; border-top: 1px solid var(--lane-edge, rgba(232, 196, 139, 0.25)); }
 
     @media (max-width: 560px) {
       .votes .v-topic { padding: 1.05rem 1rem 0.95rem; }
@@ -169,6 +180,10 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
   <script>
     import { officeBase } from "@/lib/auth.mjs";
     import { readVotes } from "@/lib/ballot-box.mjs";
+    // shipped on main and kept: POS-983 (a ballot's body, each choice's credit/note/link/households; the https-only link guard) and
+    // POS-502 (the household's human stakes from here: ballot-stake.mjs mounts the form into a staking ballot's slot)
+    import { safeHref } from "@/lib/votes-render.mjs";
+    import { mountBallotStake } from "@/lib/ballot-stake.mjs";
 
     (function () {
       var box = document.querySelector("[data-votes]");
@@ -205,9 +220,36 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
           if (c.staked == null) n.textContent = "unreadable";
           else { n.appendChild(document.createTextNode(String(c.staked))); n.appendChild(el("span", "v-cand-unit", " stamps")); }
           li.appendChild(n);
+          // POS-983: the choice's own words beneath its bar: credit, note, an https link, the households backing it
+          var words = [];
+          if (c.credit) words.push(el("span", "v-cand-credit", "by " + c.credit));
+          if (c.note) words.push(el("span", "v-cand-note", c.note));
+          var href = safeHref(c.link);
+          if (href) { var link = el("a", "v-cand-link", "see it →"); link.href = href; link.rel = "nofollow noopener"; words.push(link); }
+          if (c.households != null) words.push(el("span", "v-cand-houses", c.households + (c.households === 1 ? " household" : " households") + " backing"));
+          if (words.length) {
+            var p = el("p", "v-cand-words");
+            words.forEach(function (w, i) { if (i) p.appendChild(document.createTextNode(" · ")); p.appendChild(w); });
+            li.appendChild(p);
+          }
           ul.appendChild(li);
         });
         return ul;
+      }
+
+      // POS-983: a ballot's body, one paragraph per line; an https address in it is a link, everything else is text
+      function bodyLine(line) {
+        var p = el("p", "v-body");
+        String(line).split(/(https:\/\/[^\s<>"']+)/).forEach(function (part, i) {
+          if (i % 2 === 0) { if (part) p.appendChild(document.createTextNode(part)); return; }
+          var trail = (/[.,;:!?)]+$/.exec(part) || [""])[0];
+          var url = trail ? part.slice(0, -trail.length) : part;
+          var href = safeHref(url);
+          if (href) { var a = el("a", null, url); a.href = href; a.rel = "nofollow noopener"; p.appendChild(a); }
+          else p.appendChild(document.createTextNode(url));
+          if (trail) p.appendChild(document.createTextNode(trail));
+        });
+        return p;
       }
 
       function topicCard(t, kind) {
@@ -220,6 +262,7 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
         if (kind === "unknown") card.appendChild(el("p", "v-stage", "The office gave this ballot a status this page does not know, so it is shown as it came and not filed as open or closed."));
         else card.appendChild(el("p", "v-stage", STAGE[kind]));
         if (t.window) card.appendChild(el("p", "v-window", t.window));
+        t.body.forEach(function (l) { card.appendChild(bodyLine(l)); });
         card.appendChild(candidates(t));
         if (t.candidatesMalformed) card.appendChild(el("p", "v-cap", "Some entries of this ballot's list could not be read and are not shown."));
         if (kind === "staking") {
@@ -232,7 +275,15 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
           how.appendChild(a);
           card.appendChild(how);
         }
-        if (t.cap != null && kind === "staking") card.appendChild(el("p", "v-cap", "Up to " + t.cap + " stamps per household on each design · stakes are escrow, returned at close"));
+        if (t.cap != null && kind === "staking") card.appendChild(el("p", "v-cap", "Up to " + t.cap + " stamps per household on each design · stakes are escrow, returned at close"
+          + (t.candidates.some(function (c) { return c.households != null; }) ? " · the most stamps leads; more backing households breaks a tie" : "")));
+        // POS-502 (shipped on main, kept): a staking ballot carries the household's human's stake form, mounted into this slot
+        if (kind === "staking") {
+          var slot = el("div", "v-stake");
+          slot.setAttribute("data-stake-slot", t.topic);
+          card.appendChild(slot);
+          try { mountBallotStake(slot, { topic: t.topic, choices: t.raw }); } catch (e) { console.debug("ballot-box: stake form stood down (" + (e && e.message) + ")"); }
+        }
         return card;
       }
 

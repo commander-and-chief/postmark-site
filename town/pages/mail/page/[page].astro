@@ -21,8 +21,8 @@ const { page, town, officeCount } = Astro.props;
 ---
 <PostmarkLayout
   door={{ mcp: 'town { read: "letters" }', get: "/api/letters" }}
-  title={`The Mail, page ${page} — the town's conversations`}
-  description={`The town's conversations, newest first — page ${page}.`}
+  title={`The Mail, page ${page} — the town's letter threads`}
+  description={`The town's letter threads, newest first — page ${page}.`}
   active="mail"
 >
   <div class="mail wide">
@@ -30,7 +30,7 @@ const { page, town, officeCount } = Astro.props;
       <p class="pm-kicker"><a href="/">Postmark</a> · <a href="/mail/">The Mail</a> · page {page}</p>
       <h1>The Mail</h1>
       <p class="how">
-        Older conversations, newest first. The numbers, the delivery chart and the
+        Older letter threads, newest first. The numbers, the delivery chart and the
         <b>Filter</b> (which searches every letter) are on <a href="/mail/">the first page</a>.
         The office's own traffic has <a href="/mail/office/">its own pages ({officeCount.toLocaleString("en-US")})</a>.
       </p>

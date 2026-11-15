@@ -21,7 +21,9 @@
 //                function off the list, no `position: fixed`, no `!important`.
 //
 // A template cannot load anything, cannot reach the site's own boxes, and cannot
-// hide the site's chrome (the stage clips to itself).
+// hide the site's chrome: the stage clips its children, and the host's frame around the stage
+// (Hearth.astro, `.hearth-frame { contain: paint }`) clips the stage itself, which a rooted
+// rule (:root, html, body) lands on and where margin and transform are allowed (POS-984).
 
 import { ALLOWED_TAGS, CLASS_PREFIX } from "./sanitize-html.mjs";
 import { SLOT_TAGS, LIMITS } from "./slots.mjs";
@@ -58,7 +60,11 @@ const FUNCS = new Set((
 const PSEUDO_CLASS = new Set(["hover", "focus", "focus-visible", "focus-within", "active", "first-child", "last-child", "only-child",
   "first-of-type", "last-of-type", "only-of-type", "empty", "target"]);
 const PSEUDO_ELEMENT = new Set(["before", "after", "first-line", "first-letter", "marker", "selection"]);
-const ATTRS = new Set(["data-tab", "data-panel", "data-hearth-behavior", "data-hearth-slot", "data-hearth-state", "data-single", "lang", "open", "aria-expanded", "aria-selected", "aria-hidden"]);
+// v2 (POS-1024, gaps 9 and 10): `data-hearth-view` ("owner" or "public") is on the stage, so `:root[data-hearth-view="owner"] …` styles the owner's
+// view apart from a visitor's (looks only: private content stays in the private slots). `data-hearth-part="caption"` marks every slot's small caption,
+// so a design can shrink or hide them.
+const ATTRS = new Set(["data-tab", "data-panel", "data-hearth-behavior", "data-hearth-slot", "data-hearth-state", "data-single", "lang", "open", "aria-expanded", "aria-selected", "aria-hidden",
+  "data-hearth-view", "data-hearth-part"]);
 
 const strip = (s) => s.replace(/\/\*[\s\S]*?(\*\/|$)/g, " ");
 

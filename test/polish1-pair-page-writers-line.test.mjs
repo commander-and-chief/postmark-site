@@ -34,7 +34,8 @@ const scriptAt = body.indexOf("<script>");
 const markup = body.slice(0, scriptAt); // the page's markup only
 const script = body.slice(scriptAt);
 
-const LINE = "Only the two households in this conversation can write back here.";
+// Until POS-1051 (2026-11-15) this line said "in this conversation"; the pair page's own noun for a pair's whole mail is "correspondence".
+const LINE = "Only the two households in this correspondence can write back here.";
 const strip = (s) => s.replace(/<!--[\s\S]*?-->/g, "");
 
 test("the page says, once, that only the conversation's two households can write back", () => {

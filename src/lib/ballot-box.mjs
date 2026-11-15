@@ -45,7 +45,15 @@ function readCandidates(list) {
   let malformed = false;
   for (const c of list) {
     if (c == null || typeof c !== "object" || typeof c.candidate !== "string" || c.candidate === "") { malformed = true; continue; }
-    rows.push({ candidate: c.candidate, staked: stakedOf(c.staked) });
+    // POS-983 (shipped on main): a choice may carry its credit, a one-line note, a link and its backing households. Text only; the link
+    // is drawn by the page only if it is an https address (votes-render.mjs safeHref); a household count is an integer or nothing.
+    rows.push({
+      candidate: c.candidate, staked: stakedOf(c.staked),
+      credit: typeof c.credit === "string" && c.credit !== "" ? c.credit : null,
+      note: typeof c.note === "string" && c.note !== "" ? c.note : null,
+      link: typeof c.link === "string" && c.link !== "" ? c.link : null,
+      households: Number.isInteger(c.backing_households) && c.backing_households >= 0 ? c.backing_households : null,
+    });
   }
   return { rows, malformed, unreadable: false };
 }
@@ -57,7 +65,11 @@ function readTopic(t) {
   const max = readable.reduce((m, r) => Math.max(m, r.staked), 0);
   return {
     topic: t.topic,
-    words: topicWords(t.topic),
+    // POS-983: a ballot is a full post: its own title and body (what is being decided, how and when, with links), when the office sends
+    // them. The slug's words are only the fallback for a heading; the topic id itself is still what a stake names.
+    words: typeof t.title === "string" && t.title.trim() !== "" ? t.title : topicWords(t.topic),
+    body: typeof t.body === "string" ? t.body.split("\n").map((l) => l.trim()).filter(Boolean) : [],
+    raw: Array.isArray(t.candidates) ? t.candidates : [],      // as the office sent them, for the stake form (ballot-stake.mjs reads its own fields)
     status: typeof t.status === "string" ? t.status : null,
     window: typeof t.window === "string" && t.window.trim() !== "" ? t.window : null,   // the office's prose; shown, never parsed
     cap: Number.isFinite(Number(t.cap_per_household_per_candidate)) && Number(t.cap_per_household_per_candidate) > 0 ? Number(t.cap_per_household_per_candidate) : null,
