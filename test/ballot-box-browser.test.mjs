@@ -109,12 +109,22 @@ async function openPage({ width = 1280, height = 900 } = {}) {
   const S = (m, p) => browser.send(m, p, sessionId);
   await S("Page.enable");
   await S("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width < 600 });
-  await S("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem("pm.office.base", "/api"); } catch (e) {}` });
+  await S("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem("pm.office.base", "/api"); ${office.stake ? `localStorage.setItem("pm.oauth.token", JSON.stringify({ access_token: "invented-token", obtained: Date.now(), expires_in: 3600 }));` : ""} } catch (e) {}` });
   await S("Fetch.enable", { patterns: [{ urlPattern: "*/api/*", requestStage: "Request" }] });
   const listener = (m) => {
     if (m.sessionId !== sessionId || m.method !== "Fetch.requestPaused") return;
     const { requestId, request } = m.params;
     const url = request?.url ?? "";
+    // STRICTLY MOCKED TRANSPORT for the stake-form lifecycle test (POS-1054): a fake identity's /me, the household door's preview and
+    // confirm, and the standing read, each counted. Nothing here reaches an office; with no `office.stake` set they are all refused.
+    if (office.stake && /\/api\/me(\?|$)/.test(url)) { office.stake.meReads += 1; return S("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{ name: "content-type", value: "application/json" }], body: Buffer.from(JSON.stringify({ handles: ["fox"], household: "invented-house" })).toString("base64") }).catch(() => {}); }
+    if (office.stake && /\/api\/household(\?|$)/.test(url) && request.method === "POST") {
+      const a = JSON.parse(request.postData || "{}").args || {};
+      if (a.preview === true) { office.stake.previews += 1; return S("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{ name: "content-type", value: "application/json" }], body: Buffer.from(JSON.stringify({ result: { preview: true, applied: a.stamps, requested: a.stamps, handle: a.from, candidate: a.candidate, household_headroom_after: 10, balance_after: 20 } })).toString("base64") }).catch(() => {}); }
+      office.stake.confirms += 1;                                     // an UNANSWERED confirm: the connection drops, so the outcome is unknown
+      return S("Fetch.failRequest", { requestId, errorReason: "ConnectionReset" }).catch(() => {});
+    }
+    if (office.stake && /\/api\/votes\/[^/?]+(\?|$)/.test(url) && request.method === "GET" && !/\/api\/votes(\?|$)/.test(url)) { office.stake.standing += 1; return S("Fetch.fulfillRequest", { requestId, responseCode: 200, responseHeaders: [{ name: "content-type", value: "application/json" }], body: Buffer.from(JSON.stringify({ candidates: [{ candidate: "Emberlight", staked: 14 }], your_household: { headroom: { Emberlight: 6 } } })).toString("base64") }).catch(() => {}); }
     if (/\/api\/votes\/stake/.test(url) || request.method !== "GET") { office.writes += 1; return S("Fetch.fulfillRequest", { requestId, responseCode: 418, body: "" }).catch(() => {}); }
     if (/\/api\/votes(\?|$)/.test(url)) {
       office.reads += 1;
@@ -276,6 +286,68 @@ test("POS-1054 (merge with main's POS-983 / POS-502): a ballot's title and body,
     assert.equal(d.closedSlot, false, "a closed one does not");
     assert.equal(d.tie, true);
   } finally { await p.close(); }
+});
+
+// ── THE STAKE FORM'S LIFECYCLE (POS-1054, frontier review of 147f72d3) ───────────────────────────────────────────────────────
+// The board is redrawn on every return to the tab. Re-mounting the stake form each time reset its "blocked until checked" state (so an
+// unanswered confirm could be confirmed again: a possible double stake) and left another pm:lens listener per redraw. The mounted
+// form is now kept per topic. Strictly mocked transport and a made-up identity: every POST and read is counted and answered here.
+test("POS-1054: the stake form survives board refreshes: the same form, its preview/sending/blocked state held, no second confirm until the human checks what landed, and refocus or lens events do not multiply reads", { skip: SKIP, timeout: 180_000 }, async () => {
+  await boot();
+  office.answer = ok([HEARTH, PAST]);
+  office.stake = { meReads: 0, previews: 0, confirms: 0, standing: 0 };
+  const p = await openPage();
+  try {
+    await p.until(`document.querySelector("[data-stake-slot=hearth-names] .bs-form") && !document.querySelector("[data-stake-slot=hearth-names] .bs-form").hidden`, "the signed-in stake form");
+    const q = (sel) => `document.querySelector("[data-stake-slot=hearth-names] ${sel}")`;
+    // mark the nodes, fill, preview (a real click), then confirm: the office does not answer
+    await p.evalJs(`(() => { ${q(".bs-form")}.__mark = "same-form"; const c = ${q("[name=candidate]")}; c.value = "Emberlight"; const s = ${q("[name=stamps]")}; s.value = "5"; s.dispatchEvent(new Event("input", { bubbles: true })); ${q(".bs-preview")}.click(); return true; })()`);
+    await p.until(`${q(".bs-confirm")} && !${q(".bs-confirm")}.hidden`, "the preview and its confirm button");
+    assert.equal(office.stake.previews, 1);
+    await p.evalJs(`${q(".bs-confirm")}.click(); true`);
+    await p.until(`${q(".bs-check")} && !${q(".bs-check")}.hidden`, "the held state after an unanswered confirm");
+    assert.equal(office.stake.confirms, 1, "one confirm was sent");
+    const held = `(() => ({ same: ${q(".bs-form")}.__mark === "same-form", forms: document.querySelectorAll(".bs-form").length, slots: document.querySelectorAll("[data-stake-slot=hearth-names]").length, checkShown: !${q(".bs-check")}.hidden, confirmHidden: ${q(".bs-confirm")}.hidden, text: ${q(".bs-out")}.textContent.replace(/\\s+/g, " ") }))()`;
+    assert.match((await p.evalJs(held)).text, /may or may not have landed/);
+    const meBefore = office.stake.meReads, readsBefore = office.reads;
+    // the reader leaves and returns three times: the board is re-read and redrawn each time
+    for (let i = 0; i < 3; i += 1) {
+      const r0 = office.reads;
+      await p.evalJs(`document.dispatchEvent(new Event("visibilitychange")); true`);
+      for (const t0 = Date.now(); office.reads === r0 && Date.now() - t0 < 10_000;) await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    assert.ok(office.reads >= readsBefore + 3, "the public board was re-read each time");
+    const after = await p.evalJs(held);
+    assert.deepEqual({ same: after.same, forms: after.forms, slots: after.slots, checkShown: after.checkShown, confirmHidden: after.confirmHidden }, { same: true, forms: 1, slots: 1, checkShown: true, confirmHidden: true }, "the SAME form, still held: no confirm button, 'check what landed' still there");
+    assert.match(after.text, /may or may not have landed/, "and its words are still on screen");
+    assert.equal(office.stake.confirms, 1, "no second confirm was sent");
+    assert.equal(office.stake.meReads, meBefore, "re-drawing the board read the identity no more times");
+    // one lens event refreshes the ONE mounted form once (a remount per redraw would have left four listeners)
+    await p.evalJs(`document.dispatchEvent(new Event("pm:lens")); true`);
+    await new Promise((r) => setTimeout(r, 600));
+    assert.equal(office.stake.meReads, meBefore + 1, "one lens event, one identity read: one instance, one listener");
+    assert.equal(office.stake.confirms, 1);
+    // checking what landed lifts the hold; the human must preview again before any confirm
+    await p.evalJs(`${q(".bs-check")}.click(); true`);
+    await p.until(`${q(".bs-check")}.hidden === true`, "the check to lift the hold");
+    assert.equal(office.stake.standing, 1);
+    assert.equal(await p.evalJs(`${q(".bs-confirm")}.hidden`), true, "still no confirm without a fresh preview");
+    // a refresh that CANNOT read the board holds the form out of the page and brings the same one back on recovery
+    office.answer = { code: 500, body: "{}" };
+    await p.evalJs(`document.dispatchEvent(new Event("visibilitychange")); true`);
+    await p.until(`document.querySelector("[data-unreadable]") !== null`, "the unreadable notice");
+    office.answer = ok([HEARTH, PAST]);
+    await p.evalJs(`document.dispatchEvent(new Event("visibilitychange")); true`);
+    await p.until(`document.querySelector("[data-stake-slot=hearth-names] .bs-form") !== null`, "the board back");
+    assert.equal(await p.evalJs(`${q(".bs-form")}.__mark`), "same-form", "the same form node came back after an unreadable interval");
+    // a topic the office stops calling staking drops its form; the stake was never re-sent
+    office.answer = ok([topic("hearth-names", "closed", [cand("Emberlight", 14)])]);
+    await p.evalJs(`document.dispatchEvent(new Event("visibilitychange")); true`);
+    await p.until(`document.querySelector("[data-section=closed]") !== null && document.querySelector("[data-stake-slot]") === null`, "the topic closed and its form gone");
+    assert.equal(office.stake.confirms, 1, "never a second confirm");
+    assert.equal(office.writes, 0, "no other write");
+  } finally { office.stake = null; await p.close(); }
 });
 
 for (const [name, width] of [["desktop 1280", 1280], ["phone 390", 390]]) {

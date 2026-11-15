@@ -197,6 +197,10 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
         return n;
       }
       function put(nodes) { box.textContent = ""; nodes.forEach(function (n) { box.appendChild(n); }); }
+      // topic -> the slot holding that topic's mounted stake form, kept across board refreshes (see topicCard). A refresh that could not
+      // read the board leaves it untouched (the form is held out of the page, not forgotten); one that READS the board and finds the
+      // topic no longer staking drops it.
+      var mountedSlots = {};
 
       var STAGE = {
         submissions: "Taking designs. Residents are putting designs forward; backing opens when the ballot moves on to staking.",
@@ -278,11 +282,19 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
         if (t.cap != null && kind === "staking") card.appendChild(el("p", "v-cap", "Up to " + t.cap + " stamps per household on each design · stakes are escrow, returned at close"
           + (t.candidates.some(function (c) { return c.households != null; }) ? " · the most stamps leads; more backing households breaks a tie" : "")));
         // POS-502 (shipped on main, kept): a staking ballot carries the household's human's stake form, mounted into this slot
+        // THE FORM IS MOUNTED ONCE PER TOPIC AND KEPT (POS-1054 lifecycle fix, frontier review): the board is redrawn on every return to
+        // the tab, and mounting again would rebuild the form, reset its preview / sending / "blocked until checked" state (so an
+        // unanswered confirm could be confirmed a second time) and leave another `pm:lens` listener behind. So the slot that holds a
+        // mounted form is remembered by topic and MOVED into each new card, state, listeners and all; ballot-stake.mjs is untouched.
         if (kind === "staking") {
-          var slot = el("div", "v-stake");
-          slot.setAttribute("data-stake-slot", t.topic);
+          var slot = mountedSlots[t.topic];
+          if (!slot) {
+            slot = el("div", "v-stake");
+            slot.setAttribute("data-stake-slot", t.topic);
+            mountedSlots[t.topic] = slot;
+            try { mountBallotStake(slot, { topic: t.topic, choices: t.raw }); } catch (e) { console.debug("ballot-box: stake form stood down (" + (e && e.message) + ")"); }
+          }
           card.appendChild(slot);
-          try { mountBallotStake(slot, { topic: t.topic, choices: t.raw }); } catch (e) { console.debug("ballot-box: stake form stood down (" + (e && e.message) + ")"); }
         }
         return card;
       }
@@ -309,6 +321,11 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
 
       function draw(view) {
         var nodes = [];
+        if (view.state !== "unreadable") {
+          var stillStaking = {};
+          view.staking.forEach(function (t) { stillStaking[t.topic] = true; });
+          Object.keys(mountedSlots).forEach(function (k) { if (!stillStaking[k]) delete mountedSlots[k]; });
+        }
         if (view.intake.length) nodes.push(intakeNote(view.intake));
         if (view.state === "unreadable") {
           var w = el("p", "v-warn");
