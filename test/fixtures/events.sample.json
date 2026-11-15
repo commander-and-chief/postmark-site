@@ -135,6 +135,23 @@
           "rsvps": { "total": 0, "residents": [] },
           "revised": 0,
           "cancelled": false
+        },
+        {
+          "id": "legacykeeper-test/legacy-draft-test",
+          "title": "Legacy free event (invented; no public completion sparks, a gallery spark exists)",
+          "invitation": "An old free event whose completion drafts stay household-private.",
+          "host": "legacykeeper-test",
+          "household": "hh:legacy-test-house",
+          "place": { "mark": null, "name": "The Legacy Lawn", "x": 60, "y": 60 },
+          "doors_open": "2026-10-01T12:00:00.000Z",
+          "starts": "2026-10-01T12:00:00.000Z",
+          "ends": "2026-10-01T13:00:00.000Z",
+          "phase": "ended",
+          "starts_in_s": -3500000,
+          "ends_in_s": -3496000,
+          "rsvps": { "total": 0, "residents": [] },
+          "revised": 0,
+          "cancelled": false
         }
       ]
     },
@@ -245,6 +262,24 @@
             "sparks": [{ "id": "oldkeeper-test/before-the-record-test", "accepted": false, "status": "claim awaiting acceptance" }, { "id": "oldkeeper-test/withdrawn-one-test", "accepted": false, "status": "withdrawn" }],
             "gallery": null,
             "gallery_note": "the rooms cannot be told, so the gallery is unknown"
+          }
+        }
+      },
+      "legacykeeper-test/legacy-draft-test": {
+        "read": "ok",
+        "event": {
+          "id": "legacykeeper-test/legacy-draft-test",
+          "phase": "ended",
+          "cancelled": false,
+          "evidence": {
+            "window": { "from": "2026-10-01T12:00:00.000Z", "to": "2026-10-01T13:00:00.000Z" },
+            "complete": true,
+            "rooms": [],
+            "room_history": "complete",
+            "present": [],
+            "present_basis": "the distinct households of public acts within 60 m of the place in the window; an RSVP is not one",
+            "sparks": [],
+            "gallery": { "rooms": [], "sparks": [{ "id": "legacy-gallery-spark-test", "credit": { "by": "legacykeeper-test", "household": "hh:legacy-test-house" }, "body": "A lawn spark (invented; an ordinary accepted Spark in the gallery)", "accepted": true, "recounting": "Accepted by ordinary rules, so it stands in the gallery while the completion collection is empty.", "experienced_at": "2026-10-01T12:20:00.000Z", "experienced_until": "2026-10-01T12:40:00.000Z" }] }
           }
         }
       }

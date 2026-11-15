@@ -231,7 +231,7 @@ export const EVENT_WORDS = Object.freeze({
   },
   sparks: {
     title: "The sparks",
-    none: "No public spark has been made from this event yet.",
+    none: "No public completion sparks are listed here.",
     unavailable: "The event's sparks couldn't be read just now, so this page cannot say whether there are any.",
     unknown: "The office did not say whether this event has sparks.",
     reference: "A spark put forward for this event:",

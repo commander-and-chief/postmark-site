@@ -377,6 +377,23 @@ test("BUILT FALSIFIER: who was there lists only the households the office served
   assert.ok(html.indexOf("rsvponly-test") < html.indexOf("data-ev-present"), "and that is the RSVP list, not the evidence");
 });
 
+test("BUILT: an empty completion collection beside a populated gallery: the gallery card stands and the empty sentence does not deny it", () => {
+  const LEGACY = "legacykeeper-test/legacy-draft-test";
+  const s = eventSections(page(LEGACY));
+  assert.equal(s.sparks.state, "none"); assert.equal(s.gallery.state, "known"); assert.equal(s.gallery.sparks.length, 1);
+  const html = eventHtml(LEGACY);
+  assert.ok(html, "the legacy event's page was built");
+  const t = (marker) => textOf(section(html, marker));
+  assert.ok(t("data-ev-sparks").includes("No public completion sparks are listed here."), "the empty collection says exactly that");
+  assert.equal(EVENT_WORDS.sparks.none, "No public completion sparks are listed here.");
+  assert.ok(section(html, "data-ev-gallery").includes('data-spark="legacy-gallery-spark-test"'), "the ordinary accepted Spark still stands in the gallery");
+  assert.ok(t("data-ev-gallery").includes("A lawn spark (invented; an ordinary accepted Spark in the gallery)"));
+  // the old sentence is the falsifier: it claimed no spark had been made from the event, which the gallery card contradicts
+  assert.equal(html.includes("No public spark has been made from this event yet"), false, "the denying sentence is gone");
+  assert.doesNotMatch(t("data-ev-sparks"), /No (public )?spark has been made/);
+  assert.equal(t("data-ev-gallery").includes(EVENT_WORDS.gallery.none), false, "and the gallery is not drawn as none");
+});
+
 test("BUILT: each state is its own sentence: known none, unknown, a claim not accepted, before the doors open, and a running event's rooms so far", () => {
   const q = eventHtml(QUIET);
   const say = (html, marker) => textOf(section(html, marker));     // text, so an escaped apostrophe is the apostrophe a reader sees
@@ -422,7 +439,7 @@ test("BUILT: /events/ lists every ended event once, newest end first, past the c
   const html = built("events");
   assert.ok(html, "/events/ is not built");
   const items = [...html.matchAll(/data-event="([^"]+)"/g)].map((m) => m[1]).filter((id) => id.includes("/"));
-  assert.deepEqual(items, [SORBET, SUPPER, QUIET, LOST, OLD], "newest end first, each once");
+  assert.deepEqual(items, [SORBET, SUPPER, QUIET, LOST, OLD, "legacykeeper-test/legacy-draft-test"], "newest end first, each once");
   assert.match(html, /data-past-more data-before="2026-10-01T00:00:00.000Z"/, "the office's own continuation, never a guess");
   assert.ok(textOf(html).includes(EVENT_WORDS.past.more));
   assert.equal(html.includes('data-past-note="unavailable"'), false, "the lasting list was read, so the page does not say it is unavailable");
