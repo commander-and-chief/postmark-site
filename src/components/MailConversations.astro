@@ -1,17 +1,17 @@
 ---
-// MailConversations — one page of The Mail's conversations (POS-254). The run
-// (`threads`) arrives newest first, sorted by each conversation's newest letter;
+// MailConversations — one page of The Mail's letter threads (POS-254; shown as "letter threads", never "conversations", POS-1051).
+// The run (`threads`) arrives newest first, sorted by each thread's newest letter;
 // this renders page `page` of it, MAIL_PAGE_SIZE at a time, between two pagers.
 // Every page is static, so the list reads the same with JavaScript off.
 import MailPager from "@/components/MailPager.astro";
 import letters from "@/data/postmark/letters.json";
 import { fmtDate, excerpt, threadTitle } from "@/lib/pm.mjs";
-import { MAIL_PAGE_SIZE, mailPageCount, mailPageSlice, previewLines } from "@/lib/mail.mjs";
+import { MAIL_PAGE_SIZE, mailPageCount, mailPageSlice, previewLines, subjectLabel } from "@/lib/mail.mjs";
 
 // `scope` says what the run is, so the "of N" is not a bare number: the town's
 // pages say "between residents", the office's own pages "with the office".
 interface Props { threads: any[]; page: number; base?: string; noun?: string; scope?: string }
-const { threads, page, base = "/mail/", noun = "conversations", scope = "" } = Astro.props;
+const { threads, page, base = "/mail/", noun = "letter threads", scope = "" } = Astro.props;
 
 const byId = new Map(letters.map((l) => [l.id, l]));
 const total = mailPageCount(threads.length);
@@ -30,7 +30,7 @@ const n = (x: number) => x.toLocaleString("en-US");
     const first = byId.get(t.key);
     return (
       <a class="pm-thread-card" href={`/mail/${t.key}/`}>
-        <span class="t-title">{threadTitle(t.key)}</span>
+        <span class="t-title" title={threadTitle(t.key)}>{subjectLabel(threadTitle(t.key))}</span>
         <div class="t-meta">
           {t.participants.join(" · ")} — {t.size} {t.size === 1 ? "letter" : "letters"},
           {" "}{fmtDate(t.firstDate)}{t.lastDate !== t.firstDate ? ` → ${fmtDate(t.lastDate)}` : ""}
