@@ -201,8 +201,10 @@ test("PIN the household page carries no ballots: the stage imports neither modul
   }
   const votes = read("town/pages/votes/index.astro");
   assert.match(votes, /import \{ mountBallotStake \} from "@\/lib\/ballot-stake\.mjs";/, "the form is /votes/'s");
-  assert.match(votes, /mountBallotStake\(slot, \{ topic: t\.topic, choices: t\.candidates \}\)/, "mounted under each STAKING ballot");
-  assert.match(votes, /if \(t\.status !== "staking"\) return;/);
+  // POS-1054 (2026-11-15): the sectioned Ballot Box page builds each STAKING ballot's slot itself and mounts the form into it
+  // (until then: box.innerHTML = votesHtml(data) and a loop with `if (t.status !== "staking") return;`).
+  assert.match(votes, /mountBallotStake\(slot, \{ topic: t\.topic, choices: t\.raw \}\)/, "mounted under each STAKING ballot");
+  assert.match(votes, /if \(kind === "staking"\) \{\s*var slot = el\("div", "v-stake"\);/);
 });
 
 test("built: no household page carries a ballots section or a stake form, and /votes/ still ships the slot the form mounts into", { skip: !built }, () => {
