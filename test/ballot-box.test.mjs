@@ -97,8 +97,13 @@ test("the Ballot House is a LIVE lane: no 'coming soon', and its '?' deck is bui
   assert.equal(votes.place, "the-town/the-ballot-house", "its place and anchor are the same");
   const deck = tutorialFor("votes");
   assert.ok(deck.length > 0 && deck.length <= MAX_SLIDES);
-  assert.deepEqual(deck.map((s) => s.call), ['town { read: "votes" }', 'household { do: "stake-vote", args: { from: "…", topic: "…", candidate: "…", stamps: 1 } }', "stake_topic: …, stake_candidate: …, stake_stamps: 1"]);
-  assert.equal(callLabel(deck[2]), "In the letter, write:", "the mail slide is a letter line, labelled as one");
+  assert.deepEqual(deck.map((s) => s.call), ['town { read: "votes" }', 'household { do: "stake-vote", args: { from: "…", topic: "…", candidate: "…", stamps: 1 } }', undefined]);
+  // frontier review of 0b173e7b: a stake written in a letter's BODY silently does nothing (the crossing reads only the letter's stake
+  // envelope fields, tools/ballot-pass-run.mjs:157), so the mail step has NO call and no "In the letter, write:" label: it points at the
+  // writing desk's vote-by-mail panel (town/pages/mail/compose.astro)
+  assert.equal(deck[2].callKind, undefined, "the mail step is not a letter line");
+  assert.match(deck[2].say, /writing desk's vote by mail panel/);
+  assert.ok(!/stake_topic|stake_candidate|stake_stamps/.test(JSON.stringify(deck)), "no body-like stake header in the deck");
   const said = deck.map((s) => s.say).join(" ");
   assert.ok(!/\bcap\b|reward|mint|\+1|earn/i.test(said), "no cap or reward promise in the deck");
   for (const s of deck) assert.equal(s.say.split(/(?<=[.!?])\s+/).filter(Boolean).length, 1, `one sentence: ${s.say}`);
@@ -116,6 +121,14 @@ test("the page: no static tallies, no Iris, no coming-soon; the live read, the s
   assert.match(page, /fetch\(officeBase\(\) \+ "\/votes"/);
   assert.ok(!/innerHTML/.test(page.slice(page.indexOf("<script>"))), "the script builds text nodes, never markup");
   for (const door of ["stake-vote", "POST /api/votes/stake", "stake_topic", "stake_candidate", "stake_stamps", "/mail/compose/?to=postmaster"]) assert.ok(page.includes(door), `the how-to names ${door}`);
+  // the mail door never tells anyone to write the stake into the letter: the fields are the envelope's, all or none, and the writing
+  // desk's vote by mail panel is the way from a browser
+  const mail = page.slice(page.indexOf("By mail, at the next crossing"), page.indexOf("</ol>"));
+  assert.match(mail, /vote by mail<\/b> panel/);
+  assert.match(mail, /on the send call, all three or none/);
+  assert.match(mail, /envelope/);
+  assert.match(mail, /a stake written into the letter's body is just a letter and stakes nothing/);
+  assert.ok(!/carrying three lines|three lines at its top|at its top:/.test(page), "the old 'three lines at the top of the letter' guidance is gone");
   assert.ok(!/every stamp returns when a vote\s+closes. Stakes land on/.test(page) && !/Stakes land on <span/.test(page), "the old claim that all stakes wait for crossings is gone");
   assert.match(page, /Straight away, through the office/);
   assert.match(page, /By mail, at the next crossing/);

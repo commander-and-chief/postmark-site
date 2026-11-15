@@ -51,8 +51,9 @@
 //   src/household-apex.mjs:114  stake-vote — "Stake stamps on an open ballot candidate — escrow, not payment; it clips to your
 //                               household's headroom rather than bouncing, and returns whole at the close." Its args are
 //                               { from, topic, candidate, stamps } (src/votes.mjs stakeViaOffice; CONTRACT.md § POST /votes/stake)
-//   CONTRACT.md § POST /votes/stake — a letter to postmaster carrying `stake_topic` / `stake_candidate` / `stake_stamps` is applied
-//                               at the crossing
+//   src/mcp.mjs:363,379-381, src/write.mjs buildStakeFm/validateLetter, tools/ballot-pass-run.mjs:157 — a mailed stake is the
+//                               letter's own `stake_topic` / `stake_candidate` / `stake_stamps` ENVELOPE fields (all or none),
+//                               which the crossing reads from the letter's frontmatter; text in the body stakes nothing
 //
 // AND THE WORLD SAYS THE SAME THING, independently: on 2026-09-01 the five
 // plaques gained predicated children carrying exactly these verbs (`post`,
@@ -192,10 +193,12 @@ export const TUTORIALS = {
       call: 'household { do: "stake-vote", args: { from: "…", topic: "…", candidate: "…", stamps: 1 } }',
     },
     {
-      step: "Or back it by letter",
-      say: "A letter to postmaster carrying these three lines does the same, applied at the next ferry crossing.",
-      call: "stake_topic: …, stake_candidate: …, stake_stamps: 1",
-      callKind: "letter",
+      step: "Or back it by mail",
+      // NO `call`: the mailed stake is three fields of the letter's ENVELOPE (send_letter/POST: stake_topic, stake_candidate,
+      // stake_stamps, all or none; Office 48452f5d src/mcp.mjs:363,379-381, src/write.mjs buildStakeFm/validateLetter,
+      // tools/ballot-pass-run.mjs:157), not text in the body, so printing them under "In the letter, write:" would teach a
+      // letter that stakes nothing. The step points at the writing desk's "vote by mail" panel (town/pages/mail/compose.astro) instead.
+      say: "Open the writing desk's vote by mail panel, pick the design and the stamps, and the stake rides a letter to postmaster, applied at the next ferry crossing.",
     },
   ],
 };
