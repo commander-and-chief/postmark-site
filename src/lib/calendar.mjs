@@ -122,7 +122,7 @@ const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
  *
  *   circles   before | rooms | none | unavailable | cancelled
  *   present   unknown | known (list, maybe empty)
- *   spark     none | spark | claim | unknown
+ *   sparks    none | known (items: spark | reference, in the producer's order) | unavailable | unknown
  *   gallery   unknown | known (sparks, maybe empty)
  *
  * `before` is the office's phase word "announced" (its doors have not opened, and the evidence is only served once they have); it
@@ -136,12 +136,12 @@ export function eventSections(event) {
   const out = { after, cancelled, phase };
   if (cancelled) {
     // "never on a cancelled event": the office serves no evidence, so there is nothing to say and nothing is claimed.
-    return { ...out, circles: { state: "cancelled" }, present: { state: "unknown" }, spark: { state: "unknown" }, gallery: { state: "unknown" } };
+    return { ...out, circles: { state: "cancelled" }, present: { state: "unknown" }, sparks: { state: "unknown", items: [] }, gallery: { state: "unknown" } };
   }
   if (!ev) {
     const before = phase === "announced";
     const gone = { state: before ? "before" : "unavailable" };
-    return { ...out, circles: gone, present: { state: "unknown", before }, spark: { state: before ? "none" : "unknown", before }, gallery: { state: "unknown", before } };
+    return { ...out, circles: gone, present: { state: "unknown", before }, sparks: { state: before ? "none" : "unknown", before, items: [] }, gallery: { state: "unknown", before } };
   }
   // circles: every qualifying room, in the office's start order, never ranked or chosen
   const rooms = Array.isArray(ev.rooms) ? ev.rooms : null;
@@ -154,19 +154,28 @@ export function eventSections(event) {
   const present = Array.isArray(ev.present)
     ? { state: "known", households: ev.present, basis: typeof ev.present_basis === "string" ? ev.present_basis : null, unplaced: Number(ev.unplaced_says) > 0 ? Number(ev.unplaced_says) : 0 }
     : { state: "unknown", basis: typeof ev.present_basis === "string" ? ev.present_basis : null };
-  // the root spark, by the completion id: null before completion; an accepted view; or { id, accepted:false, status }
-  let spark;
-  if (ev.spark === null) spark = { state: "none" };
-  else if (isObj(ev.spark) && ev.spark.accepted === false) spark = { state: "claim", id: ev.spark.id ?? null, status: typeof ev.spark.status === "string" ? ev.spark.status : null };
-  else if (isObj(ev.spark)) spark = { state: "spark", spark: ev.spark };
-  else spark = { state: "unknown" };
+  // the event's public completion SPARKS, a collection in the producer's order (POS-1035 v1): each is an accepted common view or a public
+  // reference { id, accepted:false, status } (pending / refused / withdrawn). No first, default or "root" is chosen. `[]` is known: no public
+  // completion Sparks (it says nothing of why: no private draft, count or receipt is implied); `null` is unavailable; an absent field is unknown.
+  // The old singular `evidence.spark` is gone and is not read. A note (`spark_note`) rides with any state, and may explain a capped collection.
+  const sparkNote = typeof ev.spark_note === "string" && ev.spark_note.trim() ? ev.spark_note.trim() : null;
+  let sparks;
+  if (Array.isArray(ev.sparks)) {
+    sparks = {
+      state: ev.sparks.length ? "known" : "none", note: sparkNote,
+      items: ev.sparks.filter(isObj).map((x) => (x.accepted === false
+        ? { kind: "reference", id: x.id ?? null, status: typeof x.status === "string" ? x.status : null }
+        : { kind: "spark", spark: x })),
+    };
+  } else if (ev.sparks === null) sparks = { state: "unavailable", note: sparkNote, items: [] };
+  else sparks = { state: "unknown", note: sparkNote, items: [] };
   // the gallery: accepted child sparks across every covered room; null is unknown (never an empty gallery)
   let gallery;
   if (isObj(ev.gallery) && Array.isArray(ev.gallery.sparks)) {
     // `complete` is the producer's own flag: true is complete, false is "so far", and an ABSENT or non-boolean flag is UNKNOWN (null), never complete
     gallery = { state: "known", rooms: Array.isArray(ev.gallery.rooms) ? ev.gallery.rooms : [], sparks: ev.gallery.sparks, complete: typeof ev.complete === "boolean" ? ev.complete : null, note: typeof ev.gallery_note === "string" ? ev.gallery_note : null };
   } else gallery = { state: "unknown", note: typeof ev.gallery_note === "string" ? ev.gallery_note : null };
-  return { ...out, circles, present, spark, gallery, window: isObj(ev.window) ? ev.window : null, complete: ev.complete === true };
+  return { ...out, circles, present, sparks, gallery, window: isObj(ev.window) ? ev.window : null, complete: ev.complete === true };
 }
 
 /**
@@ -220,12 +229,13 @@ export const EVENT_WORDS = Object.freeze({
     unknown: "Who was there couldn't be read, so this page cannot say. That is not the same as no one.",
     before: "Who was there is shown once the event has run.",
   },
-  spark: {
-    title: "The spark",
-    none: "No spark has been made from this event yet.",
-    claim: "A spark for this event has been put forward and is waiting on acceptance.",
-    refused: "A spark was put forward for this event and was not accepted.",
-    unknown: "Whether this event has a spark couldn't be read just now.",
+  sparks: {
+    title: "The sparks",
+    none: "No public spark has been made from this event yet.",
+    unavailable: "The event's sparks couldn't be read just now, so this page cannot say whether there are any.",
+    unknown: "The office did not say whether this event has sparks.",
+    reference: "A spark put forward for this event:",
+    status: "the office says:",
   },
   gallery: {
     title: "The gallery",

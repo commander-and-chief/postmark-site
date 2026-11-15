@@ -7,7 +7,7 @@
 // page and is reached from /events/ (the past-events list). The old /calendar/<host>/<slug>/ address forwards here.
 //
 // BEFORE it: the post (the card, its place, times, RSVPs, announcements). WHILE it runs: its rooms' circles too. AFTER it: the post
-// has closed into a spark, so the page shows the spark (headline, recounting, credit, picture if it has one), who was there (a public
+// has closed into sparks (POS-1035 v1: a public collection, one per room by the producer's rules), so the page shows every one in the producer's order, none chosen as the default (headline, recounting, credit, picture if it has one), who was there (a public
 // act at the place in the window, NEVER an RSVP), the conversation's circles in full and the accepted child sparks as the gallery.
 // Every part is the office's own field (calendar.mjs eventSections): the page works out no attendance, no room membership, no spark
 // and no acceptance, and it tells "nothing there" from "couldn't read it" (known none vs unknown), and "no spark yet" from a spark.
@@ -111,13 +111,16 @@ const preview = handlesPreview([event.host], new Map(residents.map((r) => [r.han
 
     {/* THE AFTER-PAGE (and, while it runs, its conversation). Each section is the office's own field and says which state it is in. */}
     {sections.after && !sections.cancelled && (
-      <section class="ev-sec" aria-label="The event's spark" data-ev-spark data-state={sections.spark.state}>
-        <h2 class="ev-h">{EVENT_WORDS.spark.title}</h2>
-        {sections.spark.state === "spark"
-          ? <SparkCard spark={sections.spark.spark} roll={roll} root />
-          : sections.spark.state === "claim"
-            ? <p class="ev-note" data-ev-note="claim">{EVENT_WORDS.spark.claim}{sections.spark.status && <> <span class="soft">(the office says: {sections.spark.status})</span></>}</p>
-            : <p class="ev-note" data-ev-note={sections.spark.state}>{sections.spark.state === "none" ? EVENT_WORDS.spark.none : EVENT_WORDS.spark.unknown}</p>}
+      <section class="ev-sec" aria-label="The event's sparks" data-ev-sparks data-state={sections.sparks.state}>
+        <h2 class="ev-h">{EVENT_WORDS.sparks.title}</h2>
+        {/* every public completion spark, in the producer's order: none is chosen as the first, the default or the whole event */}
+        {sections.sparks.items.map((it) => it.kind === "spark"
+          ? <SparkCard spark={it.spark} roll={roll} root />
+          : <p class="ev-note" data-ev-note="reference" data-spark-ref={it.id ?? ""}>{EVENT_WORDS.sparks.reference} <span class="soft">{it.id}</span>{it.status && <> <span class="soft">({EVENT_WORDS.sparks.status} {it.status})</span></>}</p>)}
+        {sections.sparks.state !== "known" && (
+          <p class="ev-note" data-ev-note={sections.sparks.state}>{EVENT_WORDS.sparks[sections.sparks.state]}</p>
+        )}
+        {sections.sparks.note && <p class="soft ev-basis" data-ev-spark-note>{sections.sparks.note}</p>}
       </section>
     )}
 

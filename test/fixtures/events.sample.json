@@ -155,7 +155,7 @@
             "room_history": "complete",
             "present": ["hh:lantern-test-house", "hh:walker-test-house"],
             "present_basis": "the distinct households of public acts within 60 m of the place in the window; an RSVP is not one",
-            "spark": null,
+            "sparks": [],
             "gallery": { "rooms": ["t1794686460000-walker-test"], "sparks": [] }
           }
         }
@@ -175,7 +175,7 @@
             "room_history": "complete",
             "present": ["hh:sorbet-test-house"],
             "present_basis": "the distinct households of public acts within 60 m of the place in the window; an RSVP is not one",
-            "spark": { "id": "sorbetkeeper-test/sorbet-night-test", "credit": { "by": "sorbetkeeper-test", "household": "hh:sorbet-test-house" }, "body": "Sorbet Night (invented)", "accepted": true, "recounting": "Seven of us ate lemon sorbet in the cave and argued about the sign.", "experienced_at": "2026-11-11T20:00:00.000Z", "experienced_until": "2026-11-11T22:00:00.000Z", "rooms": ["t1794427260000-pica-test"], "event": "sorbetkeeper-test/sorbet-night-test" },
+            "sparks": [{ "id": "sorbetkeeper-test/sorbet-night-test", "credit": { "by": "sorbetkeeper-test", "household": "hh:sorbet-test-house" }, "body": "Sorbet Night (invented)", "accepted": true, "recounting": "Seven of us ate lemon sorbet in the cave and argued about the sign.", "experienced_at": "2026-11-11T20:00:00.000Z", "experienced_until": "2026-11-11T22:00:00.000Z", "rooms": ["t1794427260000-pica-test"], "event": "sorbetkeeper-test/sorbet-night-test" }],
             "gallery": { "rooms": ["t1794427260000-pica-test"], "sparks": [] }
           }
         }
@@ -196,7 +196,10 @@
             "room_history": "complete",
             "present": ["hh:supper-test-house", "solo:guest-test"],
             "present_basis": "the distinct households of public acts within 60 m of the place in the window; an RSVP is not one",
-            "spark": { "id": "supperkeeper-test/harvest-supper-test", "credit": { "by": "supperkeeper-test", "household": "hh:supper-test-house" }, "body": "Harvest Supper (invented; ended outside the seven-day list)", "accepted": true, "recounting": "A long table, too many dishes, and one very serious argument about pie.", "picture": "/media/invented-harvest-supper.png", "experienced_at": "2026-10-20T18:00:00.000Z", "experienced_until": "2026-10-20T21:00:00.000Z", "rooms": ["t1792519260000-supperkeeper-test", "t1792520400000-guest-test"], "event": "supperkeeper-test/harvest-supper-test" },
+            "spark_note": "INVENTED: the public collection is shown in the producer's order; a cap may leave some rooms without one",
+            "sparks": [{ "id": "supperkeeper-test/harvest-supper-test", "credit": { "by": "supperkeeper-test", "household": "hh:supper-test-house" }, "body": "Harvest Supper (invented; ended outside the seven-day list)", "accepted": true, "recounting": "A long table, too many dishes, and one very serious argument about pie.", "picture": "/media/invented-harvest-supper.png", "experienced_at": "2026-10-20T18:00:00.000Z", "experienced_until": "2026-10-20T21:00:00.000Z", "rooms": ["t1792519260000-supperkeeper-test"], "event": "supperkeeper-test/harvest-supper-test" },
+              { "id": "supperkeeper-test/harvest-supper-guests-test", "credit": { "by": "guest-test", "household": "hh:guest-test-house" }, "body": "The guests' table (invented; a second completion spark, no picture)", "accepted": true, "recounting": "The second room kept talking about pie until the lamps went out.", "experienced_at": "2026-10-20T19:00:00.000Z", "experienced_until": "2026-10-20T21:00:00.000Z", "rooms": ["t1792520400000-guest-test"], "event": "supperkeeper-test/harvest-supper-test" },
+              { "id": "supperkeeper-test/harvest-supper-pending-test", "accepted": false, "status": "pending" }],
             "gallery": {
               "rooms": ["t1792519260000-supperkeeper-test", "t1792520400000-guest-test"],
               "sparks": [
@@ -220,7 +223,7 @@
             "room_history": "complete",
             "present": [],
             "present_basis": "the distinct households of public acts within 60 m of the place in the window; an RSVP is not one",
-            "spark": null,
+            "sparks": [],
             "gallery": { "rooms": [], "sparks": [] }
           }
         }
@@ -239,7 +242,7 @@
             "room_history": "unavailable",
             "room_note": "the window opens before the oldest settlement this office reads",
             "present": null,
-            "spark": { "id": "oldkeeper-test/before-the-record-test", "accepted": false, "status": "claim awaiting acceptance" },
+            "sparks": [{ "id": "oldkeeper-test/before-the-record-test", "accepted": false, "status": "claim awaiting acceptance" }, { "id": "oldkeeper-test/withdrawn-one-test", "accepted": false, "status": "withdrawn" }],
             "gallery": null,
             "gallery_note": "the rooms cannot be told, so the gallery is unknown"
           }

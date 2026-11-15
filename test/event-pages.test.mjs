@@ -72,8 +72,11 @@ test("FALSIFIER: an ended event OUTSIDE the seven-day calendar list still has a 
 test("the supper's after-page: the accepted root spark, the people who did a public act (never an RSVP), every room, and the gallery of accepted child sparks", () => {
   const s = eventSections(page(SUPPER));
   assert.equal(s.after, true);
-  assert.equal(s.spark.state, "spark");
-  assert.equal(s.spark.spark.recounting, "A long table, too many dishes, and one very serious argument about pie.");
+  assert.equal(s.sparks.state, "known");
+  assert.deepEqual(s.sparks.items.map((i) => i.kind), ["spark", "spark", "reference"], "every public completion spark and reference, in the producer's order, none chosen");
+  assert.equal(s.sparks.items[0].spark.recounting, "A long table, too many dishes, and one very serious argument about pie.");
+  assert.equal(s.sparks.items[2].status, "pending");
+  assert.match(s.sparks.note, /cap may leave some rooms/);
   assert.deepEqual(s.circles.rooms.map(roomIdOf), ["t1792519260000-supperkeeper-test", "t1792520400000-guest-test"], "EVERY qualifying room, in the office's order, none chosen");
   assert.equal(s.circles.state, "rooms");
   assert.deepEqual(s.present.households, ["hh:supper-test-house", "solo:guest-test"]);
@@ -90,16 +93,24 @@ test("known none is not unknown: an empty set, a proved no-room, no spark yet; a
   const q = eventSections(page(QUIET));
   assert.equal(q.circles.state, "none", "history complete and no rooms: nothing formed at the place");
   assert.equal(q.present.state, "known"); assert.deepEqual(q.present.households, []);
-  assert.equal(q.spark.state, "none", "a null spark is 'none yet', taken from the office's null and not from the clock");
+  assert.equal(q.sparks.state, "none", "an empty public collection is 'none yet', taken from the office's [] and not from the clock");
+  assert.deepEqual(q.sparks.items, []);
+  // null is UNAVAILABLE (with its note), absent is unknown, and neither is drawn as none; the singular `spark` of the old envelope is not read at all
+  const ev = (over) => ({ id: "h/s", phase: "ended", cancelled: false, evidence: { rooms: [], room_history: "complete", present: [], gallery: { rooms: [], sparks: [] }, ...over } });
+  const nul = eventSections(ev({ sparks: null, spark_note: "the collection could not be read" }));
+  assert.equal(nul.sparks.state, "unavailable"); assert.equal(nul.sparks.note, "the collection could not be read");
+  assert.equal(eventSections(ev({})).sparks.state, "unknown");
+  assert.equal(eventSections(ev({ spark: { id: "x", accepted: true, body: "old singular alias" } })).sparks.state, "unknown", "the unpublished singular alias is ignored, never promoted to the collection");
+  assert.equal(eventSections(ev({ sparks: [], gallery: null, gallery_note: "n" })).gallery.state, "unknown", "root and gallery availability are independent");
   assert.equal(q.gallery.state, "known"); assert.deepEqual(q.gallery.sparks, []);
   // a missing read on an event that has run: unavailable / unknown in EVERY section (the build asked and was not answered)
   const l = eventSections(page(LOST));
-  assert.deepEqual([l.circles.state, l.present.state, l.spark.state, l.gallery.state], ["unavailable", "unknown", "unknown", "unknown"]);
+  assert.deepEqual([l.circles.state, l.present.state, l.sparks.state, l.gallery.state], ["unavailable", "unknown", "unknown", "unknown"]);
   // rooms unavailable, present null, gallery null, a claim: each its own honest state
   const o = eventSections(page(OLD));
   assert.equal(o.circles.state, "unavailable"); assert.match(o.circles.note, /oldest settlement/);
   assert.equal(o.present.state, "unknown");
-  assert.equal(o.spark.state, "claim"); assert.equal(o.spark.status, "claim awaiting acceptance");
+  assert.deepEqual(o.sparks.items.map((i) => [i.kind, i.status]), [["reference", "claim awaiting acceptance"], ["reference", "withdrawn"]]);
   assert.equal(o.gallery.state, "unknown"); assert.match(o.gallery.note, /unknown/);
   // CONTROL for the arms above: the same function says "known" for the same shapes when the office served them
   assert.equal(eventSections(page(SUPPER)).present.state, "known");
@@ -108,13 +119,13 @@ test("known none is not unknown: an empty set, a proved no-room, no spark yet; a
 test("before the doors open there is no evidence and the page says so; a running event shows its rooms so far; a cancelled event claims nothing", () => {
   const c = eventSections(page(COMING));
   assert.equal(c.circles.state, "before"); assert.equal(c.after, false);
-  assert.equal(c.spark.state, "none", "no spark is expected before the event, and none is worked out");
+  assert.equal(c.sparks.state, "none", "no spark is expected before the event, and none is worked out");
   const live = eventSections(page(LIVE));
   assert.equal(live.circles.state, "rooms"); assert.equal(live.after, false); assert.equal(live.complete, false);
   assert.equal(live.gallery.complete, false, "while the event is on, coverage is 'so far'");
   const cancelled = eventSections({ ...page(COMING), phase: "ended", cancelled: true });
   assert.equal(cancelled.circles.state, "cancelled");
-  assert.deepEqual([cancelled.present.state, cancelled.spark.state, cancelled.gallery.state], ["unknown", "unknown", "unknown"]);
+  assert.deepEqual([cancelled.present.state, cancelled.sparks.state, cancelled.gallery.state], ["unknown", "unknown", "unknown"]);
   // a phase that is not 'announced' with NO evidence is unavailable, never 'before' (the page does not read a clock)
   assert.equal(eventSections({ ...page(COMING), phase: "underway" }).circles.state, "unavailable");
 });
@@ -131,7 +142,7 @@ test("room ids are opaque string-or-number values: a positive number and zero su
 });
 
 test("an ABSENT completion flag on a served gallery is unknown, never complete; true and false stay literal", () => {
-  const ev = (complete) => ({ id: "h/s", phase: "ended", cancelled: false, evidence: { rooms: [], room_history: "complete", present: [], spark: null, gallery: { rooms: [], sparks: [] }, ...(complete === undefined ? {} : { complete }) } });
+  const ev = (complete) => ({ id: "h/s", phase: "ended", cancelled: false, evidence: { rooms: [], room_history: "complete", present: [], sparks: [], gallery: { rooms: [], sparks: [] }, ...(complete === undefined ? {} : { complete }) } });
   assert.equal(eventSections(ev(true)).gallery.complete, true);
   assert.equal(eventSections(ev(false)).gallery.complete, false);
   assert.equal(eventSections(ev(undefined)).gallery.complete, null, "absent: unknown");
@@ -322,15 +333,20 @@ test("BUILT FALSIFIER: the ended event outside the seven-day list has its page a
   assert.match(html, /data-event-page[^>]*data-after/);
   const t = textOf(html);
   assert.ok(t.includes("Harvest Supper (invented; ended outside the seven-day list)"));
-  // the spark: headline, recounting, credit
-  const spark = section(html, "data-ev-spark");
+  // the sparks: EVERY public completion spark, in the producer's order, each with headline, recounting and credit; then the public reference and the note
+  const spark = section(html, "data-ev-sparks");
   assert.match(textOf(spark), /A long table, too many dishes, and one very serious argument about pie\./);
-  assert.match(spark, /data-spark-root/); assert.match(spark, /data-spark-credit/);
-  // the gallery: both accepted child sparks, the root not among them
+  assert.match(textOf(spark), /The second room kept talking about pie until the lamps went out\./);
+  assert.deepEqual([...spark.matchAll(/data-spark="([^"]*)"/g)].map((m) => m[1]), ["supperkeeper-test/harvest-supper-test", "supperkeeper-test/harvest-supper-guests-test"], "both completion sparks, none chosen as the default");
+  assert.equal((spark.match(/data-spark-picture/g) ?? []).length, 1, "only the spark that has a picture draws a picture tile");
+  assert.match(spark, /data-spark-credit/);
+  assert.match(spark, /data-spark-ref="supperkeeper-test\/harvest-supper-pending-test"/); assert.match(textOf(spark), /the office says: pending/);
+  assert.match(spark, /data-ev-spark-note/); assert.match(textOf(spark), /a cap may leave some rooms without one/);
+  // the gallery: both accepted child sparks, no completion spark among them
   const gal = section(html, "data-ev-gallery");
   assert.equal((gal.match(/data-spark="/g) ?? []).length, 2);
   assert.ok(gal.includes("The pie argument") && gal.includes("The last slice"));
-  assert.equal(gal.includes('data-spark="supperkeeper-test/harvest-supper-test"'), false, "the root is not repeated in the gallery");
+  assert.equal(gal.includes('data-spark="supperkeeper-test/harvest-supper-test"') || gal.includes("harvest-supper-guests-test"), false, "no completion spark is repeated in the gallery");
   // both rooms, in the office's order, each with the no-JS floor and a link to its whole talk
   const circ = section(html, "data-ev-circles");
   const roomsAt = [...circ.matchAll(/data-ev-room="([^"]+)"/g)].map((m) => m[1]);
@@ -366,19 +382,20 @@ test("BUILT: each state is its own sentence: known none, unknown, a claim not ac
   const say = (html, marker) => textOf(section(html, marker));     // text, so an escaped apostrophe is the apostrophe a reader sees
   assert.equal(say(q, "data-ev-circles").includes(EVENT_WORDS.circles.none), true);
   assert.ok(say(q, "data-ev-present").includes(EVENT_WORDS.present.none));
-  assert.ok(say(q, "data-ev-spark").includes(EVENT_WORDS.spark.none));
+  assert.ok(say(q, "data-ev-sparks").includes(EVENT_WORDS.sparks.none));
   assert.ok(say(q, "data-ev-gallery").includes(EVENT_WORDS.gallery.none));
   const l = eventHtml(LOST);
-  for (const [marker, words] of [["data-ev-circles", EVENT_WORDS.circles.unavailable], ["data-ev-present", EVENT_WORDS.present.unknown], ["data-ev-spark", EVENT_WORDS.spark.unknown], ["data-ev-gallery", EVENT_WORDS.gallery.unknown]]) {
+  for (const [marker, words] of [["data-ev-circles", EVENT_WORDS.circles.unavailable], ["data-ev-present", EVENT_WORDS.present.unknown], ["data-ev-sparks", EVENT_WORDS.sparks.unknown], ["data-ev-gallery", EVENT_WORDS.gallery.unknown]]) {
     assert.ok(say(l, marker).includes(words), `${marker}: unavailable is said as unavailable`);
     assert.equal(say(l, marker).includes(EVENT_WORDS.circles.none) || say(l, marker).includes(EVENT_WORDS.gallery.none), false, `${marker}: and never as none`);
   }
   const o = eventHtml(OLD);
-  assert.match(textOf(section(o, "data-ev-spark")), /waiting on acceptance/); assert.match(textOf(section(o, "data-ev-spark")), /claim awaiting acceptance/);
+  assert.match(textOf(section(o, "data-ev-sparks")), /claim awaiting acceptance/); assert.match(textOf(section(o, "data-ev-sparks")), /withdrawn/);
+  assert.equal((section(o, "data-ev-sparks").match(/data-spark-ref=/g) ?? []).length, 2, "every public reference, none chosen");
   assert.match(textOf(section(o, "data-ev-circles")), /oldest settlement/);
   const c = eventHtml(COMING);
   assert.ok(say(c, "data-ev-circles").includes(EVENT_WORDS.circles.before));
-  assert.equal(c.includes("data-ev-spark"), false, "no spark section before the event");
+  assert.equal(c.includes("data-ev-sparks"), false, "no sparks section before the event");
   const live = eventHtml(LIVE);
   assert.match(live, /data-ev-circles[^>]*data-live/, "a running event refreshes its rooms from the office");
   // a room whose id is the NUMBER 0 is a room: drawn, linked, and mounted by its id, never lost to a truthiness check
