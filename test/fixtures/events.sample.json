@@ -274,12 +274,12 @@
           "evidence": {
             "window": { "from": "2026-10-01T12:00:00.000Z", "to": "2026-10-01T13:00:00.000Z" },
             "complete": true,
-            "rooms": [],
+            "rooms": [{ "id": "t1790856000000-lawn-test", "live": false, "place": "The Legacy Lawn", "at": { "x": 60, "y": 60 }, "started": "2026-10-01T12:10:00.000Z", "latest": "2026-10-01T12:35:00.000Z", "participants": ["legacykeeper-test"], "voice_count": 4, "frame": { "room": "t1790856000000-lawn-test", "at": { "x": 60, "y": 60 }, "extent": { "w": 20, "h": 20 } } }],
             "room_history": "complete",
-            "present": [],
+            "present": ["hh:legacy-test-house"],
             "present_basis": "the distinct households of public acts within 60 m of the place in the window; an RSVP is not one",
             "sparks": [],
-            "gallery": { "rooms": [], "sparks": [{ "id": "legacy-gallery-spark-test", "credit": { "by": "legacykeeper-test", "household": "hh:legacy-test-house" }, "body": "A lawn spark (invented; an ordinary accepted Spark in the gallery)", "accepted": true, "recounting": "Accepted by ordinary rules, so it stands in the gallery while the completion collection is empty.", "experienced_at": "2026-10-01T12:20:00.000Z", "experienced_until": "2026-10-01T12:40:00.000Z" }] }
+            "gallery": { "rooms": ["t1790856000000-lawn-test"], "sparks": [{ "id": "legacy-gallery-spark-test", "credit": { "by": "legacykeeper-test", "household": "hh:legacy-test-house" }, "body": "A lawn spark (invented; an ordinary accepted Spark in the gallery)", "accepted": true, "recounting": "Accepted by ordinary rules, so it stands in the gallery while the completion collection is empty.", "experienced_at": "2026-10-01T12:20:00.000Z", "experienced_until": "2026-10-01T12:40:00.000Z", "rooms": ["t1790856000000-lawn-test"], "circle": 70001 }] }
           }
         }
       }

@@ -383,6 +383,12 @@ test("BUILT: an empty completion collection beside a populated gallery: the gall
   assert.equal(s.sparks.state, "none"); assert.equal(s.gallery.state, "known"); assert.equal(s.gallery.sparks.length, 1);
   const html = eventHtml(LEGACY);
   assert.ok(html, "the legacy event's page was built");
+  // the case is producer-consistent: a qualifying room in the window, the same room covered by the gallery and named by the gallery Spark, and the present household
+  assert.equal(s.circles.state, "rooms"); assert.deepEqual(s.circles.rooms.map(roomIdOf), ["t1790856000000-lawn-test"]);
+  assert.deepEqual(s.gallery.rooms, ["t1790856000000-lawn-test"]); assert.deepEqual(s.gallery.sparks[0].rooms, ["t1790856000000-lawn-test"]);
+  assert.deepEqual(s.present.households, ["hh:legacy-test-house"]);
+  assert.ok(section(html, "data-ev-circles").includes('data-ev-room="t1790856000000-lawn-test"'), "the room's circles are on the page, above the gallery");
+  assert.equal(textOf(section(html, "data-ev-circles")).includes("No conversation formed"), false, "so the page does not say no conversation formed");
   const t = (marker) => textOf(section(html, marker));
   assert.ok(t("data-ev-sparks").includes("No public completion sparks are listed here."), "the empty collection says exactly that");
   assert.equal(EVENT_WORDS.sparks.none, "No public completion sparks are listed here.");
