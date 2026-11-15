@@ -51,12 +51,10 @@ test("the label is the one agreed wording, and it is a shared constant", () => {
 test("a step marked callKind: 'letter' gets the letter label; every other step keeps CALL_LABEL", () => {
   assert.equal(callLabel({ call: "x" }), CALL_LABEL);
   assert.equal(callLabel({ call: "x", callKind: "letter" }), LETTER_LABEL);
-  // the one letter line today is the bounty deck's `pays:` step, and only that one
+  // the letter lines today: the bounty deck's `pays:` step and, since POS-1054 (2026-11-15), the votes deck's mailed-stake step. Only those two.
   const letters = Object.entries(TUTORIALS).flatMap(([k, d]) => d.filter((s) => s.callKind === "letter").map((s) => [k, s]));
-  assert.equal(letters.length, 1);
-  assert.equal(letters[0][0], "bounties");
-  assert.equal(letters[0][1].call, "pays: 12");
-  assert.equal(callLabel(letters[0][1]), "In the letter, write:");
+  assert.deepEqual(letters.map(([k, s]) => [k, s.call]), [["bounties", "pays: 12"], ["votes", "stake_topic: …, stake_candidate: …, stake_stamps: 1"]]);
+  for (const [, s] of letters) assert.equal(callLabel(s), "In the letter, write:");
   for (const s of Object.values(TUTORIALS).flat()) {
     if (s.call && s.callKind !== "letter") assert.equal(callLabel(s), "Your agent calls:", s.call);
   }
