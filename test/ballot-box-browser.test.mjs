@@ -227,6 +227,34 @@ test("POS-1054: an intake note is intake (not a zero-backed ballot); an unknown 
   } finally { await p.close(); }
 });
 
+test("POS-1054 (lead FIX): an unreadable design list is said to be unreadable (not 'no designs'); a true [] says none; only-unknown or unnamed ballots do not claim 'no ballot is open / past below'", { skip: SKIP, timeout: 180_000 }, async () => {
+  await boot();
+  const read = async (answer) => {
+    office.answer = answer;
+    const p = await openPage();
+    try {
+      await p.until(`document.querySelector("[data-votes] .v-topic, [data-votes] .v-empty, [data-votes] [data-unreadable]") !== null`, "the page to draw");
+      await new Promise((r) => setTimeout(r, 300));
+      return await p.evalJs(`(() => { const t = document.querySelector("[data-votes]"); return { text: t.textContent.replace(/\\s+/g, " "), stages: [...t.querySelectorAll(".v-cands .v-stage")].map((e) => e.textContent) }; })()`);
+    } finally { await p.close(); }
+  };
+  const noList = await read(ok([{ topic: "no-list", status: "staking", cap_per_household_per_candidate: 20, window: "w" }, { topic: "null-list", status: "staking", candidates: null }, { topic: "obj-list", status: "staking", candidates: { candidate: "A", staked: 1 } }]));
+  assert.equal(noList.stages.length, 3);
+  for (const s of noList.stages) assert.match(s, /could not be read, so none are shown\. That does not mean it has none\./);
+  assert.ok(!/lists no designs/.test(noList.text), "never 'the office lists no designs' for an unreadable list");
+  const trueEmpty = await read(ok([topic("really-empty", "staking", [])]));
+  assert.deepEqual(trueEmpty.stages, ["The office lists no designs on this ballot yet."], "a true [] still says none");
+  const unknownOnly = await read(ok([topic("odd", "archived", [cand("A", 1)])]));
+  assert.ok(!/No ballot is open right now/.test(unknownOnly.text) && !/Past ballots are below/.test(unknownOnly.text), "an unrecognised status is not 'no ballot open, past below'");
+  assert.match(unknownOnly.text, /No ballot is shown as open here, and some of what the office sent could not be sorted/);
+  const unnamed = await read(ok([{ status: "staking", candidates: [cand("A", 1)] }, { topic: "", status: "staking" }]));
+  assert.ok(!/No ballot is open right now/.test(unnamed.text) && !/Past ballots are below/.test(unnamed.text));
+  const plain = await read(ok([PAST]));
+  assert.match(plain.text, /No ballot is open right now\. Past ballots are below\./, "when everything was sorted and only past ballots exist, the plain sentence stands");
+  const huge = await read(ok([topic("huge", "staking", [cand("A", "9".repeat(400)), cand("B", 4)])]));
+  assert.match(huge.text, /unreadable/);
+});
+
 for (const [name, width] of [["desktop 1280", 1280], ["phone 390", 390]]) {
   test(`POS-1054 (${name}): the board fits the view, and the how-to names the doors and the two things a stake needs`, { skip: SKIP, timeout: 120_000 }, async () => {
     await boot();

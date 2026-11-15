@@ -69,6 +69,42 @@ test("a staked figure that is not a number is unreadable, never 0", () => {
   assert.equal(v.staking[0].total, null, "no total from a partly unreadable list");
 });
 
+// ── LEAD FIX at bd314184 (Facet): three invariant holes ─────────────────────────────────────────────────────────────────────────
+test("a candidates list that is missing, null or not an array is UNREADABLE, not an empty ballot; a real [] is still genuinely empty; partial loss still warns", () => {
+  for (const bad of [undefined, null, "x", 7, {}, { candidate: "A", staked: 1 }]) {
+    const raw = { topic: "t", status: "staking", cap_per_household_per_candidate: 20 };
+    if (bad !== undefined) raw.candidates = bad;
+    const t = readVotes({ topics: [raw] }).staking[0];
+    assert.equal(t.candidatesUnreadable, true, `candidates ${JSON.stringify(bad)} is unreadable`);
+    assert.deepEqual(t.candidates, []);
+  }
+  const empty = readVotes({ topics: [ballot("t", "staking", [])] }).staking[0];
+  assert.equal(empty.candidatesUnreadable, false, "a true [] is the office saying none");
+  assert.equal(empty.candidatesMalformed, false);
+  const partial = readVotes({ topics: [ballot("t", "staking", [cand("A", 1), null, { staked: 3 }])] }).staking[0];
+  assert.equal(partial.candidatesUnreadable, false);
+  assert.equal(partial.candidatesMalformed, true, "a partly unreadable list still warns");
+  assert.deepEqual(partial.candidates.map((c) => c.candidate), ["A"]);
+});
+
+test("a digit string too long to be a finite number is unreadable, never an Infinity bar; ordinary digit strings keep working", () => {
+  assert.equal(stakedOf("9".repeat(400)), null);
+  assert.equal(stakedOf("007"), 7);
+  assert.equal(stakedOf("12"), 12, "the same format as before, no new numeric rule");
+  const t = readVotes({ topics: [ballot("t", "staking", [cand("A", "9".repeat(400)), cand("B", 4)])] }).staking[0];
+  assert.deepEqual(t.candidates.map((c) => [c.staked, c.pct]), [[null, 0], [4, 100]], "the huge one is unreadable and does not flatten the real bar");
+});
+
+test("the page's how-to tells the reader to use the exact topic from the card's 'the topic is' line (the heading drops the dashes), and its empty/none claims are qualified", () => {
+  assert.equal(topicWords("hearth-names"), "hearth names", "the heading is the dehyphenated words");
+  assert.match(page, /exact topic named in the "the topic is …" line on its card, which keeps the dashes the heading leaves out/);
+  assert.ok(!/\(its heading\)/.test(page), "no longer 'its heading'");
+  assert.match(page, /This ballot's list of designs could not be read, so none are shown\. That does not mean it has none\./);
+  assert.match(page, /var unsorted = view\.unrecognised\.length > 0 \|\| view\.droppedTopics > 0;/);
+  assert.match(page, /No ballot is shown as open here, and some of what the office sent could not be sorted/);
+  assert.ok(!/"No ballot is open right now\. Past ballots are below\."\)\)/.test(page), "the unconditional claim is gone");
+});
+
 test("an intake note is an intake note: not a ballot, not zero-backed; and a 503 refusal carries only its note", () => {
   const v = readVotes({ topics: [HEARTH], awaiting_intake: ["new-ballot"], awaiting_intake_note: "x" });
   assert.deepEqual(v.intake.map((i) => i.topic), ["new-ballot"]);

@@ -25,7 +25,10 @@ export const STATUS_CLOSED = "closed";
 /** A staked figure as the office gave it: a finite non-negative number, else null (unreadable, never zero). */
 export function stakedOf(value) {
   if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? value : null;
-  if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number(value.trim());
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const n = Number(value.trim());
+    return Number.isFinite(n) ? n : null;                         // a long enough digit string converts to Infinity: unreadable, never a bar
+  }
   return null;
 }
 
@@ -36,19 +39,20 @@ export function topicWords(slug) {
 }
 
 function readCandidates(list) {
-  if (!Array.isArray(list)) return { rows: [], malformed: list != null };
+  // a list that is missing, null or not an array is UNREADABLE, which is not the office saying a ballot has no designs (a real [])
+  if (!Array.isArray(list)) return { rows: [], malformed: false, unreadable: true };
   const rows = [];
   let malformed = false;
   for (const c of list) {
     if (c == null || typeof c !== "object" || typeof c.candidate !== "string" || c.candidate === "") { malformed = true; continue; }
     rows.push({ candidate: c.candidate, staked: stakedOf(c.staked) });
   }
-  return { rows, malformed };
+  return { rows, malformed, unreadable: false };
 }
 
 function readTopic(t) {
   if (t == null || typeof t !== "object" || typeof t.topic !== "string" || t.topic === "") return null;
-  const { rows, malformed } = readCandidates(t.candidates);
+  const { rows, malformed, unreadable } = readCandidates(t.candidates);
   const readable = rows.filter((r) => r.staked != null);
   const max = readable.reduce((m, r) => Math.max(m, r.staked), 0);
   return {
@@ -59,6 +63,7 @@ function readTopic(t) {
     cap: Number.isFinite(Number(t.cap_per_household_per_candidate)) && Number(t.cap_per_household_per_candidate) > 0 ? Number(t.cap_per_household_per_candidate) : null,
     candidates: rows.map((r) => ({ ...r, pct: r.staked != null && max > 0 && r.staked > 0 ? Math.max(1.5, (r.staked / max) * 100) : 0 })),
     candidatesMalformed: malformed,
+    candidatesUnreadable: unreadable,
     total: readable.length === rows.length ? rows.reduce((n, r) => n + r.staked, 0) : null,
   };
 }

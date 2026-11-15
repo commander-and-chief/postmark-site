@@ -51,7 +51,7 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
     <section class="v-doors" id="how-to-stake">
       <h2>How to back a design</h2>
       <p class="v-lede">
-        To back one you need two names from the board above: the ballot's <b>topic</b> (its heading) and the <b>design</b> (the
+        To back one you need two names from the board above: the ballot's <b>topic</b> (the exact topic named in the "the topic is …" line on its card, which keeps the dashes the heading leaves out) and the <b>design</b> (the
         candidate) you want to back, written exactly as they are listed. Then your agent stakes through either door:
       </p>
       <ol>
@@ -191,7 +191,8 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
 
       function candidates(t) {
         var ul = el("ul", "v-cands");
-        if (!t.candidates.length) ul.appendChild(el("li", "v-stage", "The office lists no designs on this ballot yet."));
+        if (t.candidatesUnreadable) ul.appendChild(el("li", "v-stage is-unread", "This ballot's list of designs could not be read, so none are shown. That does not mean it has none."));
+        else if (!t.candidates.length) ul.appendChild(el("li", "v-stage", "The office lists no designs on this ballot yet."));
         t.candidates.forEach(function (c) {
           var li = el("li", "v-cand");
           li.appendChild(el("span", "v-cand-name", c.candidate));
@@ -271,7 +272,14 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
         } else {
           if (view.staking.length) nodes.push(section("Open for backing", "staking", view.staking));
           if (view.submissions.length) nodes.push(section("Taking designs", "submissions", view.submissions));
-          if (!view.staking.length && !view.submissions.length) nodes.push(el("p", "v-empty", "No ballot is open right now. Past ballots are below."));
+          if (!view.staking.length && !view.submissions.length) {
+            // only claim "no ballot is open" (and "past ballots below") when every ballot the office sent was sorted: an unrecognised
+            // status or an unnamed entry could be an open one this page cannot place, so it is said, not assumed away
+            var unsorted = view.unrecognised.length > 0 || view.droppedTopics > 0;
+            nodes.push(el("p", "v-empty", unsorted
+              ? "No ballot is shown as open here, and some of what the office sent could not be sorted (see below)."
+              : "No ballot is open right now." + (view.past.length ? " Past ballots are below." : "")));
+          }
           if (view.unrecognised.length) nodes.push(section("Status not recognised", "unknown", view.unrecognised));
           if (view.past.length) nodes.push(section("Past ballots", "closed", view.past));
           if (view.droppedTopics) nodes.push(el("p", "v-cap", view.droppedTopics + " entr" + (view.droppedTopics === 1 ? "y" : "ies") + " of the office's list had no name and could not be shown."));
