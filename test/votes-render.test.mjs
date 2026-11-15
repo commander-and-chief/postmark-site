@@ -32,9 +32,14 @@ const HEARTH = { topics: [{ topic: "hearth", status: "staking", cap_per_househol
   ] }] };
 
 test("the page draws the tally with the one renderer, from the office it signed in to", () => {
-  assert.match(PAGE, /import \{ votesHtml \} from "@\/lib\/votes-render\.mjs"/);
+  // POS-1054 (2026-11-15): until then the page drew the tally with votesHtml into box.innerHTML. The Ballot Box page is now sectioned
+  // (src/lib/ballot-box.mjs sorts the reply; the page builds text nodes), and it still draws POS-983's words (a ballot's body, each
+  // choice's credit, note, https-only link and backing households) with this module's own https guard. The office is still the page's own.
+  assert.match(PAGE, /import \{ safeHref \} from "@\/lib\/votes-render\.mjs"/);
+  assert.match(PAGE, /import \{ readVotes \} from "@\/lib\/ballot-box\.mjs"/);
   assert.match(PAGE, /officeBase\(\) \+ "\/votes"/);
-  assert.match(PAGE, /box\.innerHTML = votesHtml\(data\)/);
+  assert.match(PAGE, /v-cand-words/);
+  assert.match(PAGE, /backing"/);
 });
 
 test("a bare-name ballot draws as it always has: its names, its stamps, its record, and no words", () => {

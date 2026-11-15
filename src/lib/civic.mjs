@@ -291,8 +291,8 @@ export function loadPlaceMarks({ dir = marksDir() } = {}) {
 // one owner, here, so the badge on the building and the heading in the panel
 // cannot disagree about it. It is NOT the same question as `standing()`, which
 // asks the world whether the building exists; a lane can stand in the world and
-// still not be live, which is exactly the marketplace's and the ballot house's
-// state today.
+// still not be live, which was the marketplace's and the ballot house's (until POS-1054 made the ballot house live: the marketplace's
+// state today).
 export const LANES = [
   {
     key: "quests",
@@ -344,7 +344,10 @@ export const LANES = [
     lane: "votes",
     place: "the-town/the-ballot-house",
     who: "the town asking residents for their word",
-    live: false,
+    // LIVE since POS-1054 (2026-11-15; Darko: "Ballot Box still says coming soon"): /votes/ now draws the office's GET /api/votes
+    // as a live board (src/lib/ballot-box.mjs), so the building and the panel stop saying "coming soon". Only this lane's chrome
+    // changed: the marketplace stays not-live, and World placement (`standing()`) is a separate fact.
+    live: true,
   },
 ];
 
