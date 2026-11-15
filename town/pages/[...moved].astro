@@ -59,7 +59,7 @@ const canonical = new URL(to.split("#")[0], Astro.site ?? "https://postmark.town
 </head>
 <body>
   {letter
-    ? <p><code>{from}</code> is a letter in a conversation, and reads on its page: <a href={to}>{to}</a></p>
+    ? <p><code>{from}</code> is a letter in a letter thread, and reads on its page: <a href={to}>{to}</a></p>
     : <p><code>{from}</code> has moved: <a href={to}>{to}</a></p>}
 </body>
 </html>

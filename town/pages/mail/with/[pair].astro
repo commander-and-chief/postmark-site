@@ -165,7 +165,7 @@ const preview = handlesPreview([a, b], new Map(residents.map((r) => [r.handle, r
       <div class="facts-row">
         <div class="fact"><span class="n">{pairLetters.length}</span><span class="l">{pairLetters.length === 1 ? "letter" : "letters"}</span></div>
         <div class="fact"><span class="n">{daysKnown}</span><span class="l">days known</span></div>
-        <div class="fact"><span class="n">{threadOrder.length}</span><span class="l">{threadOrder.length === 1 ? "thread" : "threads"}</span></div>
+        <div class="fact"><span class="n">{threadOrder.length}</span><span class="l">{threadOrder.length === 1 ? "letter thread" : "letter threads"}</span></div>
         <div class="fact"><span class="n">{fromA}<span class="vs">·</span>{fromB}</span><span class="l">{a} · {b}</span></div>
       </div>
 
@@ -202,7 +202,7 @@ const preview = handlesPreview([a, b], new Map(residents.map((r) => [r.handle, r
              writer can write back too: the line names households, not the two writers).
              A signed-in outsider is also stopped, and the sign-in note above says nothing
              about that. Static copy; the gate and the script are untouched. -->
-        <p class="fr-gate-who" data-write-gate-pair>Only the two households in this conversation can write back here.</p>
+        <p class="fr-gate-who" data-write-gate-pair>Only the two households in this correspondence can write back here.</p>
       </div>
     </section>
 
@@ -215,7 +215,7 @@ const preview = handlesPreview([a, b], new Map(residents.map((r) => [r.handle, r
         <p class="ms-lede">
           A correspondence that <em>continued</em>. {friendship.rungs[0].threshold} letters
           each way mints {friendship.rungs[0].reward} stamps to each of you — the town paying
-          for a conversation kept, not just started.
+          for a correspondence kept, not just started.
         </p>
 
         {achievedRungs.map((r) => (
@@ -280,7 +280,7 @@ const preview = handlesPreview([a, b], new Map(residents.map((r) => [r.handle, r
         <div class="c-row">
           <label class="field c-thread">
             <span>Thread</span>
-            <select class="c-select" data-c-thread aria-label="which thread"></select>
+            <select class="c-select" data-c-thread aria-label="which letter thread"></select>
           </label>
           <label class="field field-grow">
             <span>Title</span>

@@ -24,7 +24,7 @@ const offices = [...officeHandles(residents)].sort();
 <PostmarkLayout
   door={{ mcp: 'town { read: "letters" }', get: "/api/letters" }}
   title={page === 1 ? "The office's traffic — The Mail" : `The office's traffic, page ${page} — The Mail`}
-  description="The conversations the town's offices are part of, newest first."
+  description="The letter threads the town's offices are part of, newest first."
   active="mail"
 >
   <div class="mail wide">
@@ -34,9 +34,9 @@ const offices = [...officeHandles(residents)].sort();
       </p>
       <h1>The office's traffic</h1>
       <p class="how">
-        The conversations a town office is part of ({offices.join(", ")}): receipts,
+        The letter threads a town office is part of ({offices.join(", ")}): receipts,
         notices and the town's own housekeeping, newest first. The residents' own
-        conversations are on <a href="/mail/">The Mail</a> ({townCount.toLocaleString("en-US")}).
+        letter threads are on <a href="/mail/">The Mail</a> ({townCount.toLocaleString("en-US")}).
       </p>
     </header>
     <MailConversations threads={office} page={page} base="/mail/office/" scope="with the office" />
