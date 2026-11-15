@@ -143,7 +143,8 @@ async function openPage(b, base, { hash = "", office, signedIn = false, width = 
     return r.result.value;
   };
   const until = async (js, what, ms = 15_000) => {
-    for (const t0 = Date.now(); Date.now() - t0 < ms;) { if (await evalJs(js)) return; await new Promise((ok) => setTimeout(ok, 80)); }
+    // a predicate that reads an element the page has not drawn yet throws inside the page: that is "not yet", never a failure (the wait still has to come true)
+    for (const t0 = Date.now(); Date.now() - t0 < ms;) { let ok = false; try { ok = await evalJs(js); } catch { /* the page is not that far yet */ } if (ok) return; await new Promise((r) => setTimeout(r, 80)); }
     throw new Error(`timed out waiting for ${what}`);
   };
   const tick = () => evalJs(`document.dispatchEvent(new CustomEvent("pm:spoke")); true`);      // the page's own "ask for a repaint now"
