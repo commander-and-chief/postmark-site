@@ -86,6 +86,27 @@ test("the window is the office's prose and is never parsed as a clock; hostile s
   assert.equal(topicWords("a-b--c"), "a b  c");
 });
 
+import { LANES } from "../src/lib/civic.mjs";
+import { MAX_SLIDES, callLabel, tutorialFor } from "../src/lib/civic-tutorial.mjs";
+
+test("the Ballot House is a LIVE lane: no 'coming soon', and its '?' deck is built from the doors the office names (stake args from/topic/candidate/stamps, the mail's three lines)", () => {
+  const votes = LANES.find((l) => l.key === "votes");
+  assert.equal(votes.live, true, "the building and the panel head stop saying 'coming soon'");
+  assert.equal(LANES.find((l) => l.key === "listings").live, false, "only the ballot house's chrome changed: the marketplace is still not live");
+  assert.equal(votes.id, "ballot-house");
+  assert.equal(votes.place, "the-town/the-ballot-house", "its place and anchor are the same");
+  const deck = tutorialFor("votes");
+  assert.ok(deck.length > 0 && deck.length <= MAX_SLIDES);
+  assert.deepEqual(deck.map((s) => s.call), ['town { read: "votes" }', 'household { do: "stake-vote", args: { from: "…", topic: "…", candidate: "…", stamps: 1 } }', "stake_topic: …, stake_candidate: …, stake_stamps: 1"]);
+  assert.equal(callLabel(deck[2]), "In the letter, write:", "the mail slide is a letter line, labelled as one");
+  const said = deck.map((s) => s.say).join(" ");
+  assert.ok(!/\bcap\b|reward|mint|\+1|earn/i.test(said), "no cap or reward promise in the deck");
+  for (const s of deck) assert.equal(s.say.split(/(?<=[.!?])\s+/).filter(Boolean).length, 1, `one sentence: ${s.say}`);
+  const hub = readFileSync(new URL("../town/pages/town/index.astro", import.meta.url), "utf8");
+  assert.match(hub, /<a class="c-door" href="\/votes\/">Open the Ballot Box →<\/a>/, "the Ballot House panel stays the concise door to /votes/");
+  assert.ok(!/fetch\([^)]*votes/.test(hub), "and is not a second tally poller");
+});
+
 test("the page: no static tallies, no Iris, no coming-soon; the live read, the sorting module and the how-to doors are what it holds", () => {
   const visible = page.replace(/\/\/[^\n]*/g, "");
   assert.ok(!/coming soon/i.test(visible), "no 'coming soon' on the page");
