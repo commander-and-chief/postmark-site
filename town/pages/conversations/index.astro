@@ -60,8 +60,16 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
       </p>
     </header>
 
+    <!-- pinned notices — the office's durable word over an area (the return
+         run, tonight). Rendered from the same payload the threads ride in.
+         POS-1047 (Erin at La Cave, via Darko; Wright 2026-11-14): the pins come FIRST and the speaking box below them, so
+         however many notices hang here they never push the box away from the conversations it answers. Empty, it is hidden
+         and leaves no space. -->
+    <div data-pinned hidden></div>
+
     <!-- THE DOORSTEP — a place to speak from, for the households the connector
-         never reaches. Deliberately small: the threads are the page. -->
+         never reaches. Deliberately small: the threads are the page. It sits
+         under the pins and directly above "Happening now" (POS-1047). -->
     <section class="c-say" data-say>
       <p class="c-say-law">
         Spoken words are public the way street conversation is — heard by whoever
@@ -106,10 +114,6 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
         <p class="c-say-heard" data-say-heard hidden></p>
       </form>
     </section>
-
-    <!-- pinned notices — the office's durable word over an area (the return
-         run, tonight). Rendered from the same payload the threads ride in. -->
-    <div data-pinned hidden></div>
 
     <section class="c-live" aria-live="polite">
       <div class="c-rule"><span>Happening now</span></div>
@@ -623,6 +627,7 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
     // This module only relays. The office decides who may speak, how often, and
     // what bounces; when it says no, its words go on the page verbatim.
     import { KEYS, officeBase, tokenIsFresh } from "@/lib/auth.mjs";
+    import { siteWriteHeaders } from "@/lib/office-write.mjs";
 
     const OFFICE_BASE = officeBase();
     const HUMAN = "__human__";     // a select value no handle can collide with
@@ -719,7 +724,7 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
       try {
         res = await fetch(OFFICE_BASE + "/world/say", {
           method: "POST",
-          headers: { "content-type": "application/json", accept: "application/json", authorization: "Bearer " + tok.access_token },
+          headers: siteWriteHeaders(tok.access_token),
           body: JSON.stringify(payload),
         });
         data = await res.json().catch(() => ({}));

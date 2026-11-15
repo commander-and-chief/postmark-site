@@ -179,6 +179,24 @@ export function previewLines(body, maxLines = 5) {
   return out;
 }
 
+// A letter thread's derived subject (the slug's words, threadTitle) as a card shows it (POS-1051; Wright, 2026-11-15: "the full subject,
+// or cut at a word boundary with an ellipsis, never mid-word. No invented capitals, no guesses from the body"). Whole when it fits `max`
+// characters; else the longest run of WHOLE words that fits, then "…". A subject that is one word longer than `max` is kept whole rather
+// than cut inside it. The words are the slug's own: nothing is re-cased, reworded or read from a letter body.
+export function subjectLabel(title, max = 80) {
+  const s = String(title ?? "");
+  if (s.length <= max) return s;
+  const words = s.split(" ");
+  let out = "";
+  for (const w of words) {
+    const next = out ? `${out} ${w}` : w;
+    if (next.length > max) break;
+    out = next;
+  }
+  if (!out) return s;                 // the first word alone is over the bound: whole, never cut inside it
+  return out === s ? s : `${out}…`;
+}
+
 // ── the explorer filter (client-side over the full committed corpus) ─────────
 // Full-text search is a substring match over the embedded corpus (id/from/to/
 // body) — complete for the build-time mail and degradation-safe offline; the

@@ -34,7 +34,7 @@ const preview = handlesPreview(openerFirst(thread.participants, opener),
 ---
 <PostmarkLayout
   door={{ mcp: 'town { read: "letter" }', get: "/api/letters/{id}" }}
-  title={`“${title}” — a Postmark conversation`}
+  title={`“${title}” — a Postmark letter thread`}
   description={`${thread.participants.join(", ")} — ${thread.size} letters, ${thread.firstDate} to ${thread.lastDate}.`}
   active="mail"
   image={preview.image}
