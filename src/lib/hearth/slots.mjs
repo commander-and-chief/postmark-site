@@ -24,6 +24,9 @@ export const SLOTS = Object.freeze({
   happened:  { label: "what happened: the house's letters, says, marks and mint, newest first", private: false },
   mail:      { label: "the house's private mail: what is new, awaiting a word, waiting for the crossing", private: true },
   "around-town": { label: "around town: what is coming on the calendar and what the bulletin says", private: false },
+  // POS-1068 (Darko, 2026-11-15 20:11 EST: "we kind of lost that functionality ... we should hotfix it into all of the default/postmark-designed hearths as well as the template"):
+  // the old household page's Coming up, as a public slot: the events the house hosts or has RSVPd to, with the going residents.
+  "coming-up": { label: "coming up: the events the house hosts or has RSVPd to, and which of its residents are going", private: false },
   // behaviors that draw from the house's live data, so they are markers too
   map:       { label: "where the residents stand now, by place (the residents map)", private: false, behavior: true },
   "stamps-chart": { label: "stamps held, resident by resident (the stamps chart)", private: false, behavior: true },
