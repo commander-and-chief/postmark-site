@@ -94,6 +94,8 @@ export const SOURCES = Object.freeze([
   "src/lib/hearth/bundle.mjs", "src/lib/hearth/paint-v2.mjs", "src/lib/hearth/script.mjs", "src/lib/office-write.mjs", "src/lib/world-cockpit-door.mjs",
   // the dropdown drawn as a listbox, for the script badge (Darko 2026-11-13 13:24 EST): Hearth.astro and HearthPicker.astro import it
   "src/lib/hearth/listbox.mjs",
+  // POS-1066 B: "Back this design" in the strip (stage.mjs imports it), with /votes/'s stake form and ballot read, and the Hearth ballot's topic
+  "src/lib/hearth/backing.mjs", "src/lib/ballot-stake.mjs", "src/lib/ballot-box.mjs", "src/lib/hearth/ballot-links.mjs",
   "src/layouts/BaseLayout.astro", "src/layouts/PostmarkLayout.astro",
   "src/lib/appearance.mjs", "src/lib/auth.mjs", "src/lib/civic-art.mjs", "src/lib/correspondents.mjs", "src/lib/docs.mjs", "src/lib/door-line.mjs",
   "src/lib/freshness.mjs", "src/lib/halloween-frame.mjs", "src/lib/halloween-motifs.mjs", "src/lib/halloween-navy.mjs",
