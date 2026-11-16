@@ -12,7 +12,8 @@
 //   § 2  the road is unchanged: the hosting-or-going filter and order, cancelled and unrelated events kept out, the right resident chips
 //   § 3  the painter (run against the smallest document, the habit of household-reads-progress.test.mjs): still reading, did not answer,
 //        and nothing coming are three different sentences, and none of them is a hidden slot
-//   § 4  the old committed designs stay compatible: the default's must-place list is unchanged, and a synthetic entry places the slot
+//   § 4  compatibility both ways, independent of the committed data: a design without the marker and the same design with it are each accepted,
+//        the default's must-place list is unchanged, and a synthetic entry places the slot
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -165,13 +166,24 @@ test("§ 3 the painter and the slot stay public: the slot's path reads no bearer
 });
 
 // ── § 4 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-test("§ 4 the committed town entries carry no marker yet (POS-1069), and nothing requires one: the default's must-place list is unchanged", () => {
+// Compatibility, stated in BOTH directions and independent of the committed town data (it must stay true the day POS-1069's marker placements
+// arrive, and while they have not): a design WITHOUT the marker and the same design WITH it are each accepted whole, each keeps every slot
+// the default must place, and the marker adds exactly one slot. The committed rows supply the design; the marker is added to a copy here.
+const MUST_PLACE = ["house", "residents", "happened", "needs-you", "stamps", "posts", "marks", "closer", "mail", "around-town"];
+test("§ 4 the default design is accepted whether or not it carries the marker: the old (no marker) and the restored (with marker) both pass, and the marker adds one slot", () => {
   const rows = JSON.parse(read("src/data/postmark/hearths.json"));
-  const { entries } = prepareEntries(rows);
-  assert.ok(!entries.some((e) => e.slots.includes("coming-up")), "no committed design places it today (the town half is POS-1069)");
-  const def = entries.find((e) => e.id === "default");
-  for (const s of ["house", "residents", "happened", "needs-you", "stamps", "posts", "marks", "closer", "mail", "around-town"]) assert.ok(def.slots.includes(s), `the default still places ${s}`);
-  assert.ok(!/coming-up/.test(read("test/hearth-entries.test.mjs")), "no old check was weakened or made to require the new slot");
+  const row = rows.find((r) => r.id === "default");
+  assert.ok(row, "the default entry's row is there to start from");
+  const bare = { ...row, html: String(row.html).replace(/<hearth-coming-up\s*><\/hearth-coming-up>/g, "") };         // the old shape: no marker, whatever the data holds today
+  const withMarker = { ...bare, html: bare.html.replace(/(<hearth-residents\s*><\/hearth-residents>)/, `$1<hearth-coming-up></hearth-coming-up>`) };
+  assert.notEqual(withMarker.html, bare.html, "the fixture really did place the marker");
+  const old = prepareEntries([bare]), restored = prepareEntries([withMarker]);
+  assert.deepEqual([old.rejected, restored.rejected], [[], []]);
+  assert.deepEqual([old.entries[0].problems, restored.entries[0].problems], [[], []], "the sanitizers remove nothing either way");
+  for (const e of [old.entries[0], restored.entries[0]]) for (const s of MUST_PLACE) assert.ok(e.slots.includes(s), `${e.id} still places ${s}`);
+  assert.ok(!old.entries[0].slots.includes("coming-up"), "the old shape has no coming-up and nothing requires it");
+  assert.deepEqual(restored.entries[0].slots.filter((s) => s !== "coming-up"), old.entries[0].slots, "the marker changes no other slot, nor their order");
+  assert.equal(restored.entries[0].slots.filter((s) => s === "coming-up").length, 1);
 });
 
 test("§ 4 a SYNTHETIC entry places <hearth-coming-up> through the same road: accepted, no problems, in order", () => {
