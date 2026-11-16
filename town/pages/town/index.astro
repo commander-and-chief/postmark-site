@@ -75,7 +75,7 @@ import { loadWorldState, notices, FIXTURE, BOARD_PLACE, ASK_MAX } from "@/lib/bo
 // import kept "just in case" is how a struck block finds its way back, which
 // this page has now been taught twice (HOLO_LINE was the first).
 import {
-  LANES, DEFAULT_LANE, PAUSED_LABEL, standing, ideas, questStandings, questCards, questBoardFrom, townDay, marketplace, PAIR_RULE,
+  LANES, DEFAULT_LANE, CHANGE_SOON_LABEL, standing, ideas, questStandings, questCards, questBoardFrom, townDay, marketplace, PAIR_RULE,
   readPen, loadPlaceMarks, plaque, markStakes, stakeOf,
   ideaDashboard, boardDashboard, worldPin,
   BLUEPRINTS_REPO, THINK_TANK_PLACE,
@@ -408,19 +408,23 @@ const switchCss = [
                     founder's ruling of 2026-09-01 and nothing the world can
                     settle. One owner for it, `LANES[].live`, so the badge here
                     and the heading in the panel cannot drift apart. */}
-                {!lane.live && !lane.paused && <span class="cq-coming">coming soon</span>}
-                {/* PAUSED (POS-1065; Wright, 2026-11-16 04:32:44Z: "bounties and
-                    the Marketplace read paused (not retired, not coming soon).
-                    Wording only"). A LABEL on the Bounty Board and the
-                    Marketplace, read from `LANES[].paused` and worded in
-                    civic.mjs (it replaces POS-1060's "changing soon"). On the
-                    Marketplace it REPLACES the coming-soon chip on this card
-                    (one chip); `live: false` is read exactly as before. A
-                    different thing from "not standing yet" above: not the
-                    world's answer, only what the lane reads today. It disables
-                    nothing, and the building is still the same anchor to the
-                    same panel. */}
-                {lane.paused && <span class="cq-paused">{PAUSED_LABEL}</span>}
+                {!lane.live && !lane.changeSoon && <span class="cq-coming">coming soon</span>}
+                {/* WORKS TODAY, LIKELY TO CHANGE SOON (POS-1065; Darko, 2026-11-15
+                    18:52 EST: "it's okay if they are still working, more
+                    important that the town knows that they are subject to change
+                    soon"; Wright, 2026-11-16 05:21:47Z: "bounties and the
+                    Marketplace work today and are likely to change soon. Not
+                    paused, not retired, not coming soon"). A LABEL on the
+                    Bounty Board and the Marketplace, read from
+                    `LANES[].changeSoon` and worded in civic.mjs; BOTH clauses
+                    are the wording, so the chip wraps to two lines instead of
+                    clipping either. On the Marketplace it REPLACES the
+                    coming-soon chip on this card (one chip); `live: false` is
+                    read exactly as before. A different thing from "not standing
+                    yet" above: not the world's answer, only what the lane reads
+                    today. It disables nothing, and the building is still the
+                    same anchor to the same panel. */}
+                {lane.changeSoon && <span class="cq-change">{CHANGE_SOON_LABEL}</span>}
               </a>
             </li>
           );
@@ -1694,18 +1698,20 @@ const switchCss = [
     color: var(--pm-stamp-bright);
   }
 
-  /* ── PAUSED, on the building (POS-1065, after POS-1060's chip) ─────────
+  /* ── WORKS TODAY · LIKELY TO CHANGE SOON, on the building (POS-1065) ───
      A LABEL, outlined where COMING SOON is filled and "not standing yet" is
      dashed, so they never read as one badge. It stands in place of COMING SOON
-     on the Marketplace card (Wright, 2026-11-16). It does not dim the
+     on the Marketplace card (Wright, 2026-11-16 05:21:47Z). BOTH clauses must
+     stay readable, so unlike the one-word chips it WRAPS (to two lines, centred,
+     in the building's own width) rather than clip or shrink. It does not dim the
      building, take the link away or change its hit area: the cell is still an
      ordinary anchor to the lane's panel. Gold-bright text on the night
      background, well over 4.5:1. */
-  .cq-paused {
-    font-family: var(--pm-mono); font-size: 0.5rem; letter-spacing: 0.12em;
-    text-transform: uppercase; color: var(--pm-gold-bright);
-    border: 1px solid rgba(232, 196, 139, 0.6); border-radius: 999px;
-    padding: 0.2em 0.6em; margin-top: 0.3rem; white-space: nowrap;
+  .cq-change {
+    font-family: var(--pm-mono); font-size: 0.5rem; letter-spacing: 0.08em; line-height: 1.45;
+    text-transform: uppercase; color: var(--pm-gold-bright); text-align: center;
+    border: 1px solid rgba(232, 196, 139, 0.6); border-radius: 0.8em;
+    padding: 0.25em 0.7em; margin-top: 0.3rem; max-width: 100%; white-space: normal;
   }
 
   /* ── COMING SOON, on the building ──────────────────────────────────────

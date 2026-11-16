@@ -11,7 +11,7 @@
 // WHAT IT PROVES that test/ballot-panel.test.mjs (the helper, in node) cannot: the panel is the page's visible panel when the Ballot House
 // is opened; its states (open / none / could not be read) are different sentences on the real page; a changed answer shows without a reload
 // when the panel is opened again; the Ballot House card opens its panel and is not "coming soon"; the Bounty Board and the Marketplace
-// wear exactly one "paused" chip each (POS-1065) and both still open their own panels; and the page fits a phone-width view.
+// wear exactly one "works today · likely to change soon" chip each (POS-1065) and both still open their own panels; and the page fits a phone-width view.
 //
 // BALLOT_PANEL_BASE_URL points it at a running dev server instead of dist-town. WITHOUT dist-town and without a base url the test SKIPS
 // and says so; WITH built pages and no browser it FAILS (so the built-pages job cannot turn a skip into a pass).
@@ -257,21 +257,26 @@ test("could not be read is a different sentence from none open, for every unread
   }
 });
 
-test("the three cards: the Ballot House is not 'coming soon' and opens its panel; the Bounty Board and the Marketplace wear one 'paused' chip each (POS-1065) and still open theirs, under a 'Paused' heading", { skip: SKIP }, async () => {
+test("the three cards: the Ballot House is not 'coming soon' and opens its panel; the Bounty Board and the Marketplace wear one 'works today · likely to change soon' chip each (POS-1065) and still open theirs, under the same words", { skip: SKIP }, async () => {
   await setup();
   const box = { asked: [], reply: () => json(VOTES) };
   const p = await openPage(browser, base, "/town/", { width: 1280, box });
   await p.until(`document.querySelector(".cq-b[data-lane='votes']") !== null`, "the quarter");
-  const chips = await p.evalJs(`[...document.querySelectorAll(".cq-b")].map((a) => ({ lane: a.getAttribute("data-lane"), chips: [...a.querySelectorAll(".cq-coming, .cq-paused")].map((c) => c.className + ":" + c.textContent.trim()) }))`);
+  const chips = await p.evalJs(`[...document.querySelectorAll(".cq-b")].map((a) => ({ lane: a.getAttribute("data-lane"), chips: [...a.querySelectorAll(".cq-coming, .cq-change")].map((c) => c.className + ":" + c.textContent.trim()) }))`);
   const by = Object.fromEntries(chips.map((c) => [c.lane, c.chips]));
   assert.deepEqual(by.votes, [], "the Ballot House card carries no coming-soon chip");
-  assert.deepEqual(by.bounties, ["cq-paused:paused"]);
-  assert.deepEqual(by.listings, ["cq-paused:paused"], "the Marketplace card shows 'paused' IN PLACE OF 'coming soon' (one chip)");
+  const WORDS = "works today · likely to change soon";
+  assert.deepEqual(by.bounties, [`cq-change:${WORDS}`]);
+  assert.deepEqual(by.listings, [`cq-change:${WORDS}`], "the Marketplace card shows it IN PLACE OF 'coming soon' (one chip)");
   assert.equal(await p.evalJs(`document.querySelectorAll(".cq-coming").length`), 0, "no coming-soon chip is left on any card");
-  assert.equal(await p.evalJs(`document.querySelectorAll(".cq-paused").length`), 2, "exactly two chips on the page");
-  // the opened panels' headings: the two paused lanes say Paused (never Coming soon), the others carry no such pill
+  assert.equal(await p.evalJs(`document.querySelectorAll(".cq-change").length`), 2, "exactly two chips on the page");
+  // BOTH CLAUSES LEGIBLE: the chip wraps, and neither clause is clipped or runs out of its building's cell
+  const fit = await p.evalJs(`[...document.querySelectorAll(".cq-change")].map((c) => { const cell = c.closest(".cq-b").getBoundingClientRect(), r = c.getBoundingClientRect();
+    return { clipped: c.scrollWidth > c.clientWidth + 1 || c.scrollHeight > c.clientHeight + 1, inside: r.left >= cell.left - 1 && r.right <= cell.right + 1, lines: Math.round(r.height / parseFloat(getComputedStyle(c).lineHeight)) }; })`);
+  for (const f of fit) assert.ok(!f.clipped && f.inside, `a chip is clipped or outside its building: ${JSON.stringify(fit)}`);
+  // the opened panels' headings: the two lanes say the same two clauses (never Coming soon), the others carry no such pill
   assert.deepEqual(await p.evalJs(`["bounty-board", "marketplace", "ballot-house", "quests"].map((id) => [id, [...document.querySelectorAll("#" + id + " .c-coming-head")].map((e) => e.textContent.trim())])`),
-    [["bounty-board", ["paused"]], ["marketplace", ["paused"]], ["ballot-house", []], ["quests", []]]);
+    [["bounty-board", [WORDS]], ["marketplace", [WORDS]], ["ballot-house", []], ["quests", []]]);
   // the building's fragment, and the panel it opens (the Bounty Board's building points at #board, a block INSIDE the bounty-board panel, which :has() opens)
   for (const [lane, id, panel] of [["bounties", "board", "bounty-board"], ["listings", "marketplace", "marketplace"], ["votes", "ballot-house", "ballot-house"]]) {
     await p.evalJs(`(location.hash = "", history.replaceState(null, "", "/town/"), true)`);

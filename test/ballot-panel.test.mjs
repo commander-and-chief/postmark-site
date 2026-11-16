@@ -1,4 +1,4 @@
-// ballot-panel.test.mjs — the Ballot House panel on /town/ reads the office's open ballots live (POS-1060), and the two "paused" chips (POS-1065 replaced POS-1060's "changing soon").
+// ballot-panel.test.mjs — the Ballot House panel on /town/ reads the office's open ballots live (POS-1060), and the two "works today · likely to change soon" chips (POS-1065's wording, after POS-1060's "changing soon" and the retracted "paused").
 //
 //   node --test test/ballot-panel.test.mjs
 //
@@ -20,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readBallots, panelHtml, mountBallotPanel, stakedOf, OPEN_STATUSES, MAX_DESIGNS } from "../src/lib/ballot-panel.mjs";
-import { LANES, PAUSED_LABEL } from "../src/lib/civic.mjs";
+import { LANES, CHANGE_SOON_LABEL } from "../src/lib/civic.mjs";
 import { tutorialFor } from "../src/lib/civic-tutorial.mjs";
 
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -259,14 +259,14 @@ test("the Ballot House is live: no 'coming soon' on its building or its panel, a
   assert.equal(votes.live, true);
   assert.deepEqual(tutorialFor("votes").map((s) => s.step), ["Read the ballots", "Back a design", "Or back it by mail"], "the live-lane law's deck, as POS-1054 wrote it");
   const page = read("town/pages/town/index.astro");
-  assert.match(page, /\{!lane\.live && !lane\.paused && <span class="cq-coming">coming soon<\/span>\}/, "the badge is still read from the flag, for the not-live lanes that do not carry the paused label");
+  assert.match(page, /\{!lane\.live && !lane\.changeSoon && <span class="cq-coming">coming soon<\/span>\}/, "the badge is still read from the flag, for the not-live lanes that do not carry the change-soon label");
   assert.ok(page.includes("not standing yet") && /quarter\.built\[lane\.key\]/.test(page), "'not standing yet' is still the world's answer");
-  assert.equal(LANES.filter((l) => !l.live).map((l) => l.key).join(), "listings", "only the Marketplace is not live (and it reads paused, not coming soon: test/paused-wording.test.mjs)");
+  assert.equal(LANES.filter((l) => !l.live).map((l) => l.key).join(), "listings", "only the Marketplace is not live (and it reads works-today-likely-to-change-soon, not coming soon: test/paused-wording.test.mjs)");
 });
 
-test("exactly two chips, 'paused' (POS-1065, in place of POS-1060's 'changing soon'), on the Bounty Board and the Marketplace: a label that changes no door", () => {
-  assert.equal(PAUSED_LABEL, "paused");
-  assert.deepEqual(LANES.filter((l) => l.paused).map((l) => l.key), ["bounties", "listings"]);
+test("exactly two chips, 'works today · likely to change soon' (POS-1065), on the Bounty Board and the Marketplace: a label that changes no door", () => {
+  assert.equal(CHANGE_SOON_LABEL, "works today · likely to change soon");
+  assert.deepEqual(LANES.filter((l) => l.changeSoon).map((l) => l.key), ["bounties", "listings"]);
   // both lanes read exactly as they did: live flags and places untouched (the Marketplace is still not live, the Bounty Board live)
   const by = Object.fromEntries(LANES.map((l) => [l.key, l]));
   assert.equal(by.bounties.live, true);
@@ -274,12 +274,12 @@ test("exactly two chips, 'paused' (POS-1065, in place of POS-1060's 'changing so
   assert.equal(by.bounties.id, "board");
   assert.equal(by.listings.id, "marketplace");
   const page = read("town/pages/town/index.astro");
-  assert.equal((page.match(/class="cq-paused"/g) ?? []).length, 1, "one chip in the card loop, drawn from the flag");
-  assert.match(page, /\{lane\.paused && <span class="cq-paused">\{PAUSED_LABEL\}<\/span>\}/);
+  assert.equal((page.match(/class="cq-change"/g) ?? []).length, 1, "one chip in the card loop, drawn from the flag");
+  assert.match(page, /\{lane\.changeSoon && <span class="cq-change">\{CHANGE_SOON_LABEL\}<\/span>\}/);
   // the building is the same anchor to the same panel; nothing here disables it
   assert.match(page, /<a class="cq-b" href=\{`#\$\{LANE_ANCHORS\[lane\.key\]\}`\} data-lane=\{lane\.key\}>/);
-  const css = page.slice(page.indexOf(".cq-paused {"), page.indexOf(".cq-paused {") + 400);
+  const css = page.slice(page.indexOf(".cq-change {"), page.indexOf(".cq-change {") + 500);
   assert.doesNotMatch(css, /pointer-events|opacity|filter|display:\s*none/, "the chip dims and blocks nothing");
   assert.doesNotMatch(page, /aria-disabled|tabindex="-1"[^>]*cq-b|cq-b[^>]*aria-disabled/, "no building is disabled");
-  assert.doesNotMatch(read("src/lib/civic.mjs"), /\bpaused:[^\n]*(disabled|status|flag)/i, "no state rides the label");
+  assert.doesNotMatch(read("src/lib/civic.mjs"), /\bchangeSoon:[^\n]*(disabled|status|flag)/i, "no state rides the label");
 });
