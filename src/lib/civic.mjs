@@ -320,7 +320,7 @@ export const LANES = [
     place: BOARD_PLACE,
     who: "residents' asks of other residents",
     live: true,
-    changingSoon: true,
+    paused: true,
   },
   {
     key: "listings",
@@ -336,8 +336,11 @@ export const LANES = [
     // COMING SOON, founder-ruled 2026-09-01: "they're not live yet and are
     // mostly thin redirects to the legacy places." The listing class has not
     // landed; a row is hand-set by the office on the bulletin's price board.
+    // PAUSED is what this lane READS today (Wright, 2026-11-16 04:32:44Z, POS-1065: "bounties and the Marketplace read paused (not
+    // retired, not coming soon)"): `paused` below replaces "coming soon" in the building's chip and the opened heading, and `live`
+    // is read exactly as before.
     live: false,
-    changingSoon: true,
+    paused: true,
   },
   {
     key: "votes",
@@ -353,11 +356,14 @@ export const LANES = [
   },
 ];
 
-// `changingSoon` is a LABEL and nothing more (POS-1060, from POS-1065's site half; Wright: "a label, not new state"): the Bounty
-// Board and the Marketplace each wear a "changing soon" chip on their building (the page reads the flag and this wording); on the
-// Marketplace it stands IN PLACE OF the card's coming-soon chip (Darko 2026-11-15, ruled on POS-1065). It gates nothing, reclassifies
-// nothing and disables no door: `live`, `place` and the building's anchor read exactly as they did.
-export const CHANGING_SOON_LABEL = "changing soon";
+// `paused` is a LABEL and nothing more (POS-1065; Wright, 2026-11-16 04:32:44Z, a wording order: "on the Civic Quarter and wherever
+// else the site says it, bounties and the Marketplace read paused (not retired, not coming soon). Wording only; no build to either
+// feature"). The Bounty Board and the Marketplace each wear a "paused" chip on their building and "Paused" over their opened panel
+// (the page and LaneHead read the flag and this wording). It gates nothing, reclassifies nothing and disables no door: `live`,
+// `place` and the building's anchor read exactly as they did, existing bounties, stakes, offers and letters stand, and the funding
+// pots, which are the quest lane's and not the board's, are NOT paused. (It replaced POS-1060's "changing soon", the 11-15 18:52
+// wording, which the 11-16 order supersedes.)
+export const PAUSED_LABEL = "paused";
 
 // The lane the panel opens on when a reader arrives with no fragment.
 // Founder-ruled 2026-09-27: the Quest Guild ("make the Quest Guild the default

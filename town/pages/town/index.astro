@@ -75,7 +75,7 @@ import { loadWorldState, notices, FIXTURE, BOARD_PLACE, ASK_MAX } from "@/lib/bo
 // import kept "just in case" is how a struck block finds its way back, which
 // this page has now been taught twice (HOLO_LINE was the first).
 import {
-  LANES, DEFAULT_LANE, CHANGING_SOON_LABEL, standing, ideas, questStandings, questCards, questBoardFrom, townDay, marketplace, PAIR_RULE,
+  LANES, DEFAULT_LANE, PAUSED_LABEL, standing, ideas, questStandings, questCards, questBoardFrom, townDay, marketplace, PAIR_RULE,
   readPen, loadPlaceMarks, plaque, markStakes, stakeOf,
   ideaDashboard, boardDashboard, worldPin,
   BLUEPRINTS_REPO, THINK_TANK_PLACE,
@@ -408,21 +408,19 @@ const switchCss = [
                     founder's ruling of 2026-09-01 and nothing the world can
                     settle. One owner for it, `LANES[].live`, so the badge here
                     and the heading in the panel cannot drift apart. */}
-                {!lane.live && !lane.changingSoon && <span class="cq-coming">coming soon</span>}
-                {/* CHANGING SOON (POS-1060, from POS-1065; Darko, 2026-11-15
-                    18:52 EST, ruled by Wright 23:52:55Z: "a 'changing soon' chip
-                    on both, in place of 'coming soon' on the Marketplace"). A
-                    LABEL on the Bounty Board and the Marketplace, read from
-                    `LANES[].changingSoon` and worded in civic.mjs. On the
+                {!lane.live && !lane.paused && <span class="cq-coming">coming soon</span>}
+                {/* PAUSED (POS-1065; Wright, 2026-11-16 04:32:44Z: "bounties and
+                    the Marketplace read paused (not retired, not coming soon).
+                    Wording only"). A LABEL on the Bounty Board and the
+                    Marketplace, read from `LANES[].paused` and worded in
+                    civic.mjs (it replaces POS-1060's "changing soon"). On the
                     Marketplace it REPLACES the coming-soon chip on this card
-                    (the card shows one chip, not two); `live: false` is read
-                    exactly as before, so the panel's own heading and every
-                    other reader of the flag are unchanged. A different thing
-                    from "not standing yet" above: not the world's answer, only
-                    a word that the lane is about to change. It disables
+                    (one chip); `live: false` is read exactly as before. A
+                    different thing from "not standing yet" above: not the
+                    world's answer, only what the lane reads today. It disables
                     nothing, and the building is still the same anchor to the
                     same panel. */}
-                {lane.changingSoon && <span class="cq-changing">{CHANGING_SOON_LABEL}</span>}
+                {lane.paused && <span class="cq-paused">{PAUSED_LABEL}</span>}
               </a>
             </li>
           );
@@ -1696,14 +1694,14 @@ const switchCss = [
     color: var(--pm-stamp-bright);
   }
 
-  /* ── CHANGING SOON, on the building (POS-1060) ─────────────────────────
+  /* ── PAUSED, on the building (POS-1065, after POS-1060's chip) ─────────
      A LABEL, outlined where COMING SOON is filled and "not standing yet" is
      dashed, so they never read as one badge. It stands in place of COMING SOON
-     on the Marketplace card (Darko 2026-11-15). It does not dim the
+     on the Marketplace card (Wright, 2026-11-16). It does not dim the
      building, take the link away or change its hit area: the cell is still an
      ordinary anchor to the lane's panel. Gold-bright text on the night
      background, well over 4.5:1. */
-  .cq-changing {
+  .cq-paused {
     font-family: var(--pm-mono); font-size: 0.5rem; letter-spacing: 0.12em;
     text-transform: uppercase; color: var(--pm-gold-bright);
     border: 1px solid rgba(232, 196, 139, 0.6); border-radius: 999px;

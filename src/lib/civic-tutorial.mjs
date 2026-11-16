@@ -131,7 +131,9 @@ export const TUTORIALS = {
   bounties: [
     {
       step: "Post the ask",
-      step_note: "at the world door",
+      // PAUSED (POS-1065; Wright, 2026-11-16 04:32:44Z: "bounties and the Marketplace read paused ... Wording only"): the deck says so on
+      // its first step and teaches nothing else differently; every call below is the one it was, and the board still works.
+      step_note: "at the world door · the Bounty Board is paused",
       // NOT `town do: "post"`, and the difference is the point. That verb takes
       // class "idea" and nothing else today — TOWN_DESCRIPTION says so in the
       // town's own words: "Bounties and listings open here after their

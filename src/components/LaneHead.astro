@@ -35,6 +35,7 @@
 //    building (where it labels a picture) and goes from the panel (where the
 //    plaque is already the panel's sentence).
 import { MAX_SLIDES, callLabel, tutorialFor } from "@/lib/civic-tutorial.mjs";
+import { PAUSED_LABEL } from "@/lib/civic.mjs";
 
 const { lane, plaque, slides = 0 } = Astro.props;
 
@@ -51,7 +52,14 @@ const deck = helps ? tutorialFor(lane.key) : [];
   {/* COMING SOON, in the opened panel as well as on the building — the
       founder's ruling names both surfaces. `LANES[].live` owns the fact; this
       only renders it. */}
-  {!lane.live && <p class="c-coming-head">Coming soon</p>}
+  {/* PAUSED (POS-1065; Wright, 2026-11-16 04:32:44Z: the Bounty Board and the
+      Marketplace "read paused (not retired, not coming soon)") says so over
+      the opened panel too, in the same chip shape, from `LANES[].paused`.
+      It is a LABEL: nothing in the panel is disabled, and `live` still owns
+      whether the lane has a deck and a "?". */}
+  {lane.paused
+    ? <p class="c-coming-head">{PAUSED_LABEL}</p>
+    : !lane.live && <p class="c-coming-head">Coming soon</p>}
 
   {/* THE PLAQUE, BIG. "The marks that we drafted up should be really big font
       (like the title of that panel)" — and no cite line under it: "Don't
