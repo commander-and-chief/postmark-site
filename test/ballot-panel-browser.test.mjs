@@ -122,10 +122,10 @@ async function openPage(b, base, path, { width, height = 900, box }) {
   };
   // a REAL click: a coordinate mouse event at the element's centre (a synthetic element.click() ignores layout and pointer-events)
   const click = async (selector) => {
-    const pt = await evalJs(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return null; e.scrollIntoView({block:"center"}); const b = e.getBoundingClientRect();
-      const x = b.left + b.width / 2, y = b.top + b.height / 2; const hit = document.elementFromPoint(x, y); return { x, y, hit: !!hit && (hit === e || e.contains(hit)) }; })()`);
+    const pt = await evalJs(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return null; e.scrollIntoView({ block: "center", behavior: "instant" }); const b = e.getBoundingClientRect();
+      const x = b.left + b.width / 2, y = b.top + b.height / 2; const hit = document.elementFromPoint(x, y); return { x, y, hit: !!hit && (hit === e || e.contains(hit)), covered: hit ? (hit.tagName + "." + hit.className + "#" + hit.id) : null, rect: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)] }; })()`);
     assert.ok(pt, `no element ${selector}`);
-    assert.ok(pt.hit, `${selector}'s centre is covered by something else`);
+    assert.ok(pt.hit, `${selector}'s centre is covered by ${pt.covered} (rect ${pt.rect}, point ${Math.round(pt.x)},${Math.round(pt.y)})`);
     for (const type of ["mousePressed", "mouseReleased"]) await S("Input.dispatchMouseEvent", { type, x: pt.x, y: pt.y, button: "left", clickCount: 1 });
   };
   return { evalJs, until, click, S, close: () => S("Target.closeTarget", { targetId }).catch(() => {}) };
@@ -241,13 +241,14 @@ test("the three cards: the Ballot House is not 'coming soon' and opens its panel
   assert.deepEqual(by.bounties, ["cq-changing:changing soon"]);
   assert.deepEqual(by.listings.sort(), ["cq-changing:changing soon", "cq-coming:coming soon"].sort(), "the Marketplace keeps its own coming-soon and gains the label");
   assert.equal(await p.evalJs(`document.querySelectorAll(".cq-changing").length`), 2, "exactly two chips on the page");
-  for (const [lane, id] of [["bounties", "board"], ["listings", "marketplace"], ["votes", "ballot-house"]]) {
+  // the building's fragment, and the panel it opens (the Bounty Board's building points at #board, a block INSIDE the bounty-board panel, which :has() opens)
+  for (const [lane, id, panel] of [["bounties", "board", "bounty-board"], ["listings", "marketplace", "marketplace"], ["votes", "ballot-house", "ballot-house"]]) {
     await p.evalJs(`(location.hash = "", history.replaceState(null, "", "/town/"), true)`);
     assert.ok(await p.evalJs(`getComputedStyle(document.querySelector(".cq-b[data-lane='${lane}']")).pointerEvents !== "none" && !document.querySelector(".cq-b[data-lane='${lane}']").hasAttribute("aria-disabled")`), `${lane}: the card is not disabled`);
     await p.click(`.cq-b[data-lane='${lane}']`);
     await p.until(`location.hash === "#${id}"`, `${lane}: the click opened #${id}`);
     const shown = await p.evalJs(`[...document.querySelectorAll(".cq-panels > .c-lane")].filter((e) => getComputedStyle(e).display !== "none").map((e) => e.id)`);
-    assert.deepEqual(shown, [id], `${lane}: its own panel shows`);
+    assert.deepEqual(shown, [panel], `${lane}: its own panel shows`);
   }
   assert.ok(!(await p.evalJs(`document.querySelector("#ballot-house").innerText`)).match(/coming soon/i), "and the Ballot House panel does not say coming soon");
   await p.close();
