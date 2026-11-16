@@ -1,6 +1,6 @@
 // ballot-panel.mjs — the open ballots in the Civic Quarter's Ballot House panel, read live from the office (POS-1060).
 //
-// Darko, 2026-11-14 (the Ballot House): "the ballot house ... to be the main place where you see the ballots ... right now that portion
+// Darko, 2026-11-15 (the Ballot House): "the ballot house ... to be the main place where you see the ballots ... right now that portion
 // is just kind of a redirect, unlike the quest guild or think tank." Wright's go: the open ballots in the civic panel, read live; /votes/
 // is the full view.
 //
@@ -59,7 +59,7 @@ export function readBallots(data) {
   for (const t of data.topics) {
     if (t == null || typeof t !== "object" || typeof t.topic !== "string" || t.topic === "" || typeof t.status !== "string") { unsorted += 1; continue; }
     if (t.status === STATUS_CLOSED) { past += 1; continue; }
-    if (!(t.status in OPEN_STATUSES)) { unsorted += 1; continue; }
+    if (!Object.hasOwn(OPEN_STATUSES, t.status)) { unsorted += 1; continue; }   // own keys only: "constructor" and "toString" are not statuses
     const list = Array.isArray(t.candidates) ? t.candidates : null;
     const designs = (list ?? []).filter((c) => c != null && typeof c === "object" && typeof c.candidate === "string" && c.candidate !== "")
       .map((c) => ({ name: c.candidate, staked: stakedOf(c.staked), households: Number.isInteger(c.backing_households) && c.backing_households >= 0 ? c.backing_households : null }));
@@ -88,7 +88,8 @@ function ballotHtml(b) {
   const shown = b.designs.slice(0, MAX_DESIGNS);
   const rest = b.designs.length - shown.length;
   let body;
-  if (b.designsUnreadable) body = '<p class="bp-warn">This ballot\'s designs could not be read, so none are shown. That does not mean it has none.</p>';
+  // a list that is missing, or that has rows but not one this page can read (`[{}]`), is unreadable: only a true `[]` is "no designs"
+  if (b.designsUnreadable || (!b.designs.length && b.designsMalformed)) body = '<p class="bp-warn">This ballot\'s designs could not be read, so none are shown. That does not mean it has none.</p>';
   else if (!b.designs.length) body = `<p class="bp-quiet">${b.status === STATUS_SUBMISSIONS ? "No design has been put forward yet." : "The office lists no designs on this ballot yet."}</p>`;
   else body = `<ul class="bp-designs">${shown.map(designHtml).join("")}</ul>` +
     (rest > 0 ? `<p class="bp-quiet">+ ${esc(plural(rest, "more design", "more designs"))} in the Ballot Box</p>` : "") +

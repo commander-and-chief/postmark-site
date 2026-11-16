@@ -354,8 +354,9 @@ export const LANES = [
 ];
 
 // `changingSoon` is a LABEL and nothing more (POS-1060, from POS-1065's site half; Wright: "a label, not new state"): the Bounty
-// Board and the Marketplace each wear a "changing soon" chip on their building (the page reads the flag and this wording). It gates
-// nothing, reclassifies nothing and disables no door: `live`, `place` and the building's anchor read exactly as they did.
+// Board and the Marketplace each wear a "changing soon" chip on their building (the page reads the flag and this wording); on the
+// Marketplace it stands IN PLACE OF the card's coming-soon chip (Darko 2026-11-15, ruled on POS-1065). It gates nothing, reclassifies
+// nothing and disables no door: `live`, `place` and the building's anchor read exactly as they did.
 export const CHANGING_SOON_LABEL = "changing soon";
 
 // The lane the panel opens on when a reader arrives with no fragment.

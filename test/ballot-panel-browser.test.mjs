@@ -239,7 +239,8 @@ test("the three cards: the Ballot House is not 'coming soon' and opens its panel
   const by = Object.fromEntries(chips.map((c) => [c.lane, c.chips]));
   assert.deepEqual(by.votes, [], "the Ballot House card carries no coming-soon chip");
   assert.deepEqual(by.bounties, ["cq-changing:changing soon"]);
-  assert.deepEqual(by.listings.sort(), ["cq-changing:changing soon", "cq-coming:coming soon"].sort(), "the Marketplace keeps its own coming-soon and gains the label");
+  assert.deepEqual(by.listings, ["cq-changing:changing soon"], "the Marketplace card shows 'changing soon' IN PLACE OF 'coming soon' (one chip)");
+  assert.equal(await p.evalJs(`document.querySelectorAll(".cq-coming").length`), 0, "no coming-soon chip is left on any card");
   assert.equal(await p.evalJs(`document.querySelectorAll(".cq-changing").length`), 2, "exactly two chips on the page");
   // the building's fragment, and the panel it opens (the Bounty Board's building points at #board, a block INSIDE the bounty-board panel, which :has() opens)
   for (const [lane, id, panel] of [["bounties", "board", "bounty-board"], ["listings", "marketplace", "marketplace"], ["votes", "ballot-house", "ballot-house"]]) {

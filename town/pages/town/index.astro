@@ -408,14 +408,20 @@ const switchCss = [
                     founder's ruling of 2026-09-01 and nothing the world can
                     settle. One owner for it, `LANES[].live`, so the badge here
                     and the heading in the panel cannot drift apart. */}
-                {!lane.live && <span class="cq-coming">coming soon</span>}
-                {/* CHANGING SOON (POS-1060, from POS-1065): a LABEL on the Bounty
-                    Board and the Marketplace, read from `LANES[].changingSoon`
-                    and worded in civic.mjs. It is a third, different thing from
-                    the two chips above: not the world's answer and not the
-                    site's machinery, only a word that the lane is about to
-                    change. It disables nothing, and the building is still the
-                    same anchor to the same panel. */}
+                {!lane.live && !lane.changingSoon && <span class="cq-coming">coming soon</span>}
+                {/* CHANGING SOON (POS-1060, from POS-1065; Darko, 2026-11-15
+                    18:52 EST, ruled by Wright 23:52:55Z: "a 'changing soon' chip
+                    on both, in place of 'coming soon' on the Marketplace"). A
+                    LABEL on the Bounty Board and the Marketplace, read from
+                    `LANES[].changingSoon` and worded in civic.mjs. On the
+                    Marketplace it REPLACES the coming-soon chip on this card
+                    (the card shows one chip, not two); `live: false` is read
+                    exactly as before, so the panel's own heading and every
+                    other reader of the flag are unchanged. A different thing
+                    from "not standing yet" above: not the world's answer, only
+                    a word that the lane is about to change. It disables
+                    nothing, and the building is still the same anchor to the
+                    same panel. */}
                 {lane.changingSoon && <span class="cq-changing">{CHANGING_SOON_LABEL}</span>}
               </a>
             </li>
@@ -1181,7 +1187,7 @@ const switchCss = [
             this lane carried went with the walk that could not reach it. */}
         <LaneHead lane={LANE_BY.votes} plaque={PLAQUES.votes} slides={tutorialFor("votes").length} />
 
-        {/* THE OPEN BALLOTS ARE READ HERE NOW (POS-1060; Darko, 2026-11-14: the
+        {/* THE OPEN BALLOTS ARE READ HERE NOW (POS-1060; Darko, 2026-11-15: the
             Ballot House "to be the main place where you see the ballots ... right
             now that portion is just kind of a redirect"). Before this the lane
             held one sentence and a door, on the reasoning that /votes/ already
@@ -1692,7 +1698,8 @@ const switchCss = [
 
   /* ── CHANGING SOON, on the building (POS-1060) ─────────────────────────
      A LABEL, outlined where COMING SOON is filled and "not standing yet" is
-     dashed, so the three never read as one badge. It does not dim the
+     dashed, so they never read as one badge. It stands in place of COMING SOON
+     on the Marketplace card (Darko 2026-11-15). It does not dim the
      building, take the link away or change its hit area: the cell is still an
      ordinary anchor to the lane's panel. Gold-bright text on the night
      background, well over 4.5:1. */

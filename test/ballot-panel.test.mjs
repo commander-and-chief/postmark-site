@@ -2,7 +2,7 @@
 //
 //   node --test test/ballot-panel.test.mjs
 //
-// Darko, 2026-11-14: the Ballot House "to be the main place where you see the ballots ... right now that portion is just kind of a redirect,
+// Darko, 2026-11-15: the Ballot House "to be the main place where you see the ballots ... right now that portion is just kind of a redirect,
 // unlike the quest guild or think tank." Wright's go: the open ballots in the civic panel, read live; /votes/ stays the full view; a real
 // card (no "coming soon"); and, from POS-1065's site half, a "changing soon" chip on the Bounty Board and the Marketplace, "a label, not new
 // state".
@@ -59,6 +59,12 @@ test("open means staking or submissions; closed is past; an unknown status is ne
   assert.deepEqual(Object.keys(OPEN_STATUSES).sort(), ["staking", "submissions"]);
   const r = readBallots({ topics: [OPEN, SUBMISSIONS, CLOSED] });
   assert.deepEqual([r.state, r.open.map((b) => b.topic), r.past, r.unsorted], ["open", ["harbor-lantern", "ferry-name"], 1, 0]);
+  // inherited names are not statuses: only the two own keys are open
+  for (const inherited of ["constructor", "toString", "hasOwnProperty", "__proto__", "valueOf"]) {
+    const r2 = readBallots({ topics: [{ ...OPEN, status: inherited }] });
+    assert.deepEqual([r2.state, r2.unsorted], ["none", 1], `${inherited} is not an open status`);
+    assert.doesNotMatch(panelHtml({ topics: [{ ...OPEN, status: inherited }] }), /Pick the harbor lantern/);
+  }
   const odd = readBallots({ topics: [{ ...OPEN, status: "paused" }] });
   assert.deepEqual([odd.state, odd.unsorted, odd.past], ["none", 1, 0]);
   const html = panelHtml({ topics: [{ ...OPEN, status: "paused" }] });
@@ -99,6 +105,14 @@ test("a design list that is missing is unreadable, not 'no designs'; a real empt
   assert.match(panelHtml({ topics: [{ ...OPEN, candidates: undefined }] }), /designs could not be read, so none are shown\. That does not mean it has none/);
   assert.match(panelHtml({ topics: [{ ...OPEN, candidates: [] }] }), /The office lists no designs on this ballot yet/);
   assert.match(panelHtml({ topics: [{ ...OPEN, candidates: [d("ok", 1), null, { candidate: 4 }] }] }), /Some of this ballot's designs could not be read/);
+  // a NONEMPTY list in which no row can be read is unreadable, never "no designs" (the office did send rows)
+  for (const rows of [[{}], [null], [{ candidate: 4 }], [{ candidate: "" }, "x"]]) {
+    const html = panelHtml({ topics: [{ ...OPEN, candidates: rows }] });
+    assert.match(html, /designs could not be read, so none are shown\. That does not mean it has none/, JSON.stringify(rows));
+    assert.doesNotMatch(html, /lists no designs/, JSON.stringify(rows));
+  }
+  assert.match(panelHtml({ topics: [{ ...SUBMISSIONS, candidates: [{}] }] }), /could not be read, so none are shown/, "also on a ballot taking designs");
+  assert.match(panelHtml({ topics: [{ ...SUBMISSIONS, candidates: [] }] }), /No design has been put forward yet/, "a true [] is still empty");
   const many = Array.from({ length: MAX_DESIGNS + 3 }, (_, i) => d(`Design ${i}`, i));
   const html = panelHtml({ topics: [{ ...OPEN, candidates: many }] });
   assert.equal((html.match(/class="bp-design"/g) ?? []).length, MAX_DESIGNS);
@@ -245,7 +259,7 @@ test("the Ballot House is live: no 'coming soon' on its building or its panel, a
   assert.equal(votes.live, true);
   assert.deepEqual(tutorialFor("votes").map((s) => s.step), ["Read the ballots", "Back a design", "Or back it by mail"], "the live-lane law's deck, as POS-1054 wrote it");
   const page = read("town/pages/town/index.astro");
-  assert.match(page, /\{!lane\.live && <span class="cq-coming">coming soon<\/span>\}/, "the badge is still read from the flag, for the lanes that are not live");
+  assert.match(page, /\{!lane\.live && !lane\.changingSoon && <span class="cq-coming">coming soon<\/span>\}/, "the badge is still read from the flag, for the not-live lanes that do not carry the replacement label");
   assert.ok(page.includes("not standing yet") && /quarter\.built\[lane\.key\]/.test(page), "'not standing yet' is still the world's answer");
   assert.equal(LANES.filter((l) => !l.live).map((l) => l.key).join(), "listings", "only the Marketplace is still coming soon");
 });
