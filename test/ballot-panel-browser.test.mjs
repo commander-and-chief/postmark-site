@@ -110,7 +110,26 @@ async function openPage(b, base, path, { width, height = 900, box }) {
       S("Fetch.fulfillRequest", { requestId, responseCode: r.status, responseHeaders: [{ name: "content-type", value: r.type ?? "application/json" }, { name: "cache-control", value: "no-store" }], body: Buffer.from(r.body ?? "").toString("base64") }).catch(() => {});
     } else S("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" }).catch(() => {});
   });
-  await S("Page.navigate", { url: base + path });
+  // A DOCUMENT NAVIGATION DESTROYS THE PAGE'S EVALUATION CONTEXT, and a Runtime.evaluate in flight when that happens fails with "Inspected
+  // target navigated or closed" (a CDP answer about the TARGET, not an assertion about the page). So a step that starts a navigation, the
+  // first Page.navigate or a real click on a link, WAITS for the new document to be loaded before anything evaluates in it: `landing()` is
+  // registered BEFORE the step (so the event cannot be missed) and settles with the main frame's new URL when its load event fires.
+  const landing = (ms = 30_000) => new Promise((ok, no) => {
+    let url = null;
+    const done = (fn, v) => { clearTimeout(t); b.listeners.splice(b.listeners.indexOf(l), 1); fn(v); };
+    const l = (m) => {
+      if (m.sessionId !== sessionId) return;
+      if (m.method === "Page.frameNavigated" && !m.params.frame.parentId) url = m.params.frame.url;
+      else if (m.method === "Page.loadEventFired" && url) done(ok, url);
+    };
+    const t = setTimeout(() => done(no, new Error(`the page did not finish loading within ${ms / 1000} s`)), ms);
+    b.listeners.push(l);
+  });
+  const first = landing();
+  first.catch(() => {});                     // if the navigate itself fails, the assertion below is the failure, not this promise's late timeout
+  const nav = await S("Page.navigate", { url: base + path });
+  assert.equal(nav.errorText, undefined, `the page did not open: ${nav.errorText}`);
+  await first;
   const evalJs = async (expression) => {
     const r = await S("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
     if (r.exceptionDetails) throw new Error(`page threw: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);
@@ -128,7 +147,14 @@ async function openPage(b, base, path, { width, height = 900, box }) {
     assert.ok(pt.hit, `${selector}'s centre is covered by ${pt.covered} (rect ${pt.rect}, point ${Math.round(pt.x)},${Math.round(pt.y)})`);
     for (const type of ["mousePressed", "mouseReleased"]) await S("Input.dispatchMouseEvent", { type, x: pt.x, y: pt.y, button: "left", clickCount: 1 });
   };
-  return { evalJs, until, click, S, close: () => S("Target.closeTarget", { targetId }).catch(() => {}) };
+  // the same REAL click, for a link that opens another document: resolves with that document's URL once it has loaded
+  const clickToNavigate = async (selector) => {
+    const landed = landing();
+    landed.catch(() => {});                  // a click that never navigates fails below, at `await landed`, not as an unhandled rejection
+    await click(selector);
+    return landed;
+  };
+  return { evalJs, until, click, clickToNavigate, S, close: () => S("Target.closeTarget", { targetId }).catch(() => {}) };
 }
 
 const VOTES = {
@@ -171,7 +197,8 @@ test("the panel draws the OPEN ballots from the office's answer, in the page's v
   assert.ok(!/harbor-lantern|Brass Fox|Pick the harbor lantern/.test(html), "the page's shell holds no tally");
   // the door to the full view is a real, clickable link
   assert.equal(await p.evalJs(`document.querySelector("#ballot-house a.c-door").getAttribute("href")`), "/votes/");
-  await p.click("#ballot-house a.c-door");   // lands on /votes/ (a navigation: the click reached the link)
+  const landedOn = await p.clickToNavigate("#ballot-house a.c-door");   // a real click that opens /votes/ (a document navigation): wait for it to load
+  assert.equal(new URL(landedOn).pathname, "/votes/", `the door opened ${landedOn}`);
   await p.until(`location.pathname === "/votes/"`, "the full view");
   assert.deepEqual(box.asked.filter((a) => !a.startsWith("GET ")), [], "no write was ever made from the page or the door");
   await p.close();
