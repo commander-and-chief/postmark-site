@@ -1063,7 +1063,11 @@ export function questKind(q, cadence) {
 // mirror, a card appears with its count already working and nobody edits a
 // page. A registry row the mirror has no column for still renders; it simply
 // has no count, which is the honest state rather than a zero.
-export function questCards(standings, registry = QUEST_REGISTRY) {
+//
+// A MONTHLY QUEST THE WHOLE TOWN COUNTS (POS-885; Wright's call for the Guild, 2026-11-16: the Guild page is town-wide, so the
+// card shows the town's total this month, never one household's "N of 10"). `tallies` is `{ <title>: <n or null> }` from
+// monthTallies below; a card whose title is in it carries `monthTotal`, and a card that is not carries no such key.
+export function questCards(standings, registry = QUEST_REGISTRY, tallies = null) {
   const done = standings?.completedBy ?? {};
   const rows = [
     ...(registry.daily ?? []).map((q) => ({ ...q, cadence: questKind(q, "daily") })),
@@ -1074,7 +1078,23 @@ export function questCards(standings, registry = QUEST_REGISTRY) {
     ...q,
     done: Object.prototype.hasOwnProperty.call(done, q.title) ? done[q.title] : null,
     of: standings?.total ?? null,
+    ...(tallies && Object.prototype.hasOwnProperty.call(tallies, q.title) ? { monthTotal: Number.isInteger(tallies[q.title]) ? tallies[q.title] : null } : {}),
   }));
+}
+
+// WHICH MONTHLY QUESTS THE TOWN'S MONTH FIGURE ANSWERS, by the registry's own id, and the field of the Hall's month record
+// that carries the figure. Bring a neighbour is the one: its count is the inviter-side payouts of the town month, the same
+// rows the town's fold counts for each household (quest-progress.mjs MONTHLY_FIELD), here taken across the town.
+export const TOWN_MONTH_FIELD = Object.freeze({ "bring-a-neighbour": "invitesPaid" });
+
+/** `{ <title>: <n or null> }` for each registry quest the town's month figure answers; `view` is hallView's, for the town's month. */
+export function monthTallies(registry, view) {
+  const out = {};
+  for (const q of Array.isArray(registry?.quests) ? registry.quests : []) {
+    const field = TOWN_MONTH_FIELD[q?.id];
+    if (field && q.cadence === "monthly" && typeof q.title === "string") out[q.title] = Number.isInteger(view?.[field]) ? view[field] : null;
+  }
+  return out;
 }
 
 // ── the bulletin mirrors ─────────────────────────────────────────────────────
