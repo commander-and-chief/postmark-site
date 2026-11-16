@@ -48,6 +48,8 @@ import { whichDesign } from "@/lib/hearth/which-design.mjs";
 import { SLOT_NAMES } from "@/lib/hearth/slots.mjs";
 import { isScripted } from "@/lib/hearth/listbox.mjs";
 import { HOLO_LINE, HOLO_NAME_LINE } from "@/lib/funding.mjs";
+import { ACCENTS, tint } from "@/lib/civic-art.mjs";
+import { iconPaths, GRID as ICON_GRID, FILL_OPACITY } from "@/lib/pixel-icons.mjs";
 
 interface Props {
   house: any;
@@ -84,6 +86,14 @@ const bulletin = (bulletinAll as any[])
 const forClient = entries.map((e) => ({ id: e.id, title: e.title, author: e.author, line: e.line, css: e.css, html: e.html, script: e.script ?? null }));
 const json = (v: unknown) => JSON.stringify(v).split("<").join("\\u003c").split("\u2028").join("\\u2028").split("\u2029").join("\\u2029");
 const slotProps = { house, faces, plate, slug, bulletin };
+// "BACK THIS DESIGN" WEARS THE VOTE-ORANGE, its stamp icon in STAMP PURPLE (POS-1066 visual FIX; Darko 2026-11-15 22:54 EST, relayed by Wright 03:55:10Z: "oh
+// actually, let's make it vote-orange, and just keep the stamp icon purple"). The orange is the Ballot House's own, read from the one table /votes/ is tinted from
+// (civic-art.mjs § ACCENTS.votes, tint("votes")), never a new colour; the icon is the site's pixel stamp (pixel-icons.mjs), decorative and not focusable. It is drawn
+// from the icon's own paths (iconPaths), not iconSvg's markup string: this page's set:html is held to the entry's sanitized parts and two JSON blobs
+// (test/hearth-entries.test.mjs), and the icon needs none.
+const vote = tint("votes");
+const backingTint = `--hb-vote:${ACCENTS.votes.A};--hb-vote-edge:${vote.edgeOpen};--hb-vote-wash:${vote.wash};--hb-vote-wash-hover:${vote.washHover}`;
+const stampIcon = iconPaths("stamp");
 ---
 <section class="hearth" data-hearth data-hearth-slug={slug} data-hearth-baked={house.hearth ?? ""} data-hearth-key={house.slug ?? ""} aria-label={`${plate}, the Hearth`}>
   <script type="application/json" data-hearth-faces set:html={json({ handles: faces.map((f) => f.handle), faces: facesByHandle })} />
@@ -94,6 +104,18 @@ const slotProps = { house, faces, plate, slug, bulletin };
     <HouseRail house={house} members={members} current="__house" reading>
       <Fragment slot="corner">
         <HearthPicker entries={pickable} selected={entry?.id ?? null} />
+        {/* "Back this design" (POS-1066 B): for ANY reader, beside the dropdown, while the Hearth ballot is staking and lists the design on screen
+            (lib/hearth/backing.mjs decides and fills it; it ships hidden). Its panel holds /votes/'s own stake form for that one design: the
+            signed-in human stakes as one of THEIR residents, and the office judges. The site's strip, never the design's region. */}
+        <details class="hearth-backing" data-hearth-backing hidden style={backingTint}>
+          <summary class="hearth-backing-sum"><span class="hearth-backing-icon" aria-hidden="true"><svg class="pm-pixicon" viewBox={`0 0 ${ICON_GRID} ${ICON_GRID}`} width="12" height="12" shape-rendering="crispEdges" aria-hidden="true" focusable="false"><path d={stampIcon.fill} fill="currentColor" opacity={FILL_OPACITY} /><path d={stampIcon.line} fill="currentColor" /></svg></span>Back this design</summary>
+          <div class="hearth-backing-panel">
+            <p class="hearth-backing-ballot" data-hearth-backing-ballot></p>
+            <p class="hearth-backing-note" data-hearth-backing-note role="status" hidden></p>
+            <div data-hearth-backing-form></div>
+            <button type="button" class="hearth-backing-signin" data-hearth-backing-signin hidden>Sign in</button>
+          </div>
+        </details>
         {/* "Design your own" (POS-1021): the town's one setup prompt, copyable, beside the dropdown. It draws only when the town has HEARTH-SETUP.md. */}
         <HearthSetup />
         {/* the house's own human only (stage.mjs shows it when the reader's sign-in holds a resident of this house; it ships hidden). A <details>, so the

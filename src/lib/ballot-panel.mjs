@@ -17,12 +17,15 @@
 //   · a status this file does not know is never drawn as open and never counted as past: when nothing else is open, the panel says some of
 //     what the office sent could not be sorted, rather than "none";
 //   · a figure that is not a number is shown as unreadable, never as 0; a design the office lists at 0 is shown at 0;
-//   · every word the office sends goes in as escaped text (esc, from votes-render.mjs); a link is never drawn here.
+//   · every word the office sends goes in as escaped text (esc, from votes-render.mjs); the office's links are never drawn here. The ONE
+//     link is POS-1066 A's: a Hearth ballot design's "see it", its live preview on its author's own house, from the map the BUILD wrote
+//     (hearth/ballot-links.mjs § seeItHref), never an address the office sent.
 //
 // NO FORM, NO SIGN-IN, NO WRITE. Staking lives at /votes/ (src/lib/ballot-stake.mjs) and at the connector door; this panel only reads.
 
 import { officeBase } from "./auth.mjs";
 import { esc } from "./votes-render.mjs";
+import { seeItHref } from "./hearth/ballot-links.mjs";
 
 /** The office's ballot lifecycle: submissions -> staking -> closed (postmark-office src/votes.mjs). */
 export const STATUS_SUBMISSIONS = "submissions";
@@ -78,20 +81,22 @@ export function readBallots(data) {
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-function designHtml(d) {
+function designHtml(d, see) {
   const n = d.staked == null ? '<span class="bp-n is-unreadable">not readable</span>' : `<span class="bp-n">${esc(plural(d.staked, "stamp", "stamps"))}</span>`;
   const h = d.households == null ? "" : `<span class="bp-houses">${esc(plural(d.households, "household", "households"))} backing</span>`;
-  return `<li class="bp-design"><span class="bp-name">${esc(d.name)}</span>${n}${h}</li>`;
+  // POS-1066 A: a Hearth design's live preview, beside its name (inside the name's cell, so the row's columns are the panel's own)
+  const link = see ? ` <a class="bp-see" href="${esc(see)}" data-hearth-preview="${esc(d.name)}">see it →</a>` : "";
+  return `<li class="bp-design"><span class="bp-name">${esc(d.name)}${link}</span>${n}${h}</li>`;
 }
 
-function ballotHtml(b) {
+function ballotHtml(b, previews) {
   const shown = b.designs.slice(0, MAX_DESIGNS);
   const rest = b.designs.length - shown.length;
   let body;
   // a list that is missing, or that has rows but not one this page can read (`[{}]`), is unreadable: only a true `[]` is "no designs"
   if (b.designsUnreadable || (!b.designs.length && b.designsMalformed)) body = '<p class="bp-warn">This ballot\'s designs could not be read, so none are shown. That does not mean it has none.</p>';
   else if (!b.designs.length) body = `<p class="bp-quiet">${b.status === STATUS_SUBMISSIONS ? "No design has been put forward yet." : "The office lists no designs on this ballot yet."}</p>`;
-  else body = `<ul class="bp-designs">${shown.map(designHtml).join("")}</ul>` +
+  else body = `<ul class="bp-designs">${shown.map((d) => designHtml(d, seeItHref(previews, b.topic, d.name))).join("")}</ul>` +
     (rest > 0 ? `<p class="bp-quiet">+ ${esc(plural(rest, "more design", "more designs"))} in the Ballot Box</p>` : "") +
     (b.designsMalformed ? '<p class="bp-warn">Some of this ballot\'s designs could not be read.</p>' : "");
   return `<li class="bp-ballot" data-ballot="${esc(b.topic)}" data-status="${esc(b.status)}">` +
@@ -100,8 +105,11 @@ function ballotHtml(b) {
     body + "</li>";
 }
 
-/** The panel's markup for an answer (or null for "could not be reached"): the open ballots, or the one sentence that says why there are none. */
-export function panelHtml(data) {
+/**
+ * The panel's markup for an answer (or null for "could not be reached"): the open ballots, or the one sentence that says why there are none.
+ * `previews` is the build's Hearth map (hearth/ballot-links.mjs § readPreviews): on the Hearth ballot, a design it holds is linked to its preview.
+ */
+export function panelHtml(data, { previews = null } = {}) {
   const r = readBallots(data);
   if (r.state === "unreadable")
     return '<p class="bp-note is-warn" data-ballot-state="unreadable"><b>The ballot box could not be read.</b> The office did not give an answer this page could use, so nothing is shown here. That does not mean no ballot is open: try again, or open the Ballot Box.</p>';
@@ -113,7 +121,7 @@ export function panelHtml(data) {
       : `<p class="bp-note" data-ballot-state="none"><b>No open ballots right now.</b> The box waits for the next vote.${esc(past)}</p>`;
   }
   const warn = r.unsorted > 0 ? '<p class="bp-warn">Some of what the office sent could not be sorted, so another ballot may be open: the Ballot Box has the whole answer.</p>' : "";
-  return `<ul class="bp-list" data-ballot-state="open">${r.open.map(ballotHtml).join("")}</ul>${warn}`;
+  return `<ul class="bp-list" data-ballot-state="open">${r.open.map((b) => ballotHtml(b, previews)).join("")}</ul>${warn}`;
 }
 
 /**
@@ -122,7 +130,7 @@ export function panelHtml(data) {
  * Only the LATEST read draws: an answer that arrives after a newer one is dropped, so a slow reply cannot put an old tally back.
  * A refresh that cannot read the box says so; it never leaves the last good tally standing as if it were current.
  */
-export function mountBallotPanel(host, { fetchImpl = globalThis.fetch, base, storage, minAge = 20_000, now = () => Date.now(), win = globalThis.window, hash = "#ballot-house" } = {}) {
+export function mountBallotPanel(host, { fetchImpl = globalThis.fetch, base, storage, minAge = 20_000, now = () => Date.now(), win = globalThis.window, hash = "#ballot-house", previews = null } = {}) {
   if (!host) return { ready: Promise.resolve(), refresh: async () => {} };
   let seq = 0, lastDraw = 0, lastState = null;
 
@@ -137,7 +145,7 @@ export function mountBallotPanel(host, { fetchImpl = globalThis.fetch, base, sto
     const mine = ++seq;
     const data = await read();
     if (mine !== seq) return;                  // a newer read is in flight or has drawn
-    host.innerHTML = panelHtml(data);
+    host.innerHTML = panelHtml(data, { previews });
     host.setAttribute?.("aria-busy", "false");
     lastState = readBallots(data).state;
     lastDraw = now();
