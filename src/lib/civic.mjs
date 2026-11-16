@@ -320,7 +320,7 @@ export const LANES = [
     place: BOARD_PLACE,
     who: "residents' asks of other residents",
     live: true,
-    changingSoon: true,
+    changeSoon: true,
   },
   {
     key: "listings",
@@ -336,8 +336,11 @@ export const LANES = [
     // COMING SOON, founder-ruled 2026-09-01: "they're not live yet and are
     // mostly thin redirects to the legacy places." The listing class has not
     // landed; a row is hand-set by the office on the bulletin's price board.
+    // "WORKS TODAY AND LIKELY TO CHANGE SOON" is what this lane READS today (Wright, 2026-11-16 05:21:47Z, POS-1065: "bounties and
+    // the Marketplace work today and are likely to change soon. Not paused, not retired, not coming soon"): `changeSoon` below
+    // replaces "coming soon" in the building's chip and the opened heading, and `live` is read exactly as before.
     live: false,
-    changingSoon: true,
+    changeSoon: true,
   },
   {
     key: "votes",
@@ -353,11 +356,15 @@ export const LANES = [
   },
 ];
 
-// `changingSoon` is a LABEL and nothing more (POS-1060, from POS-1065's site half; Wright: "a label, not new state"): the Bounty
-// Board and the Marketplace each wear a "changing soon" chip on their building (the page reads the flag and this wording); on the
-// Marketplace it stands IN PLACE OF the card's coming-soon chip (Darko 2026-11-15, ruled on POS-1065). It gates nothing, reclassifies
-// nothing and disables no door: `live`, `place` and the building's anchor read exactly as they did.
-export const CHANGING_SOON_LABEL = "changing soon";
+// `changeSoon` is a LABEL and nothing more (POS-1065). Darko, 2026-11-15 18:52 EST: "it's okay if they are still working, more
+// important that the town knows that they are subject to change soon. these are kind of dead pathways anyway so it's not worth a big
+// build". Wright, 2026-11-16 05:21:47Z (correcting his 04:32 "paused" note): "bounties and the Marketplace work today and are likely
+// to change soon. Not paused, not retired, not coming soon. Same places, same no-build scope". The Bounty Board and the Marketplace
+// each wear this chip on their building and over their opened panel (the page and LaneHead read the flag and this wording), and
+// BOTH clauses are the wording: that they work, and that they are likely to change. It gates nothing, reclassifies nothing and
+// disables no door: `live`, `place` and the building's anchor read exactly as they did, and existing bounties, stakes, offers and
+// letters stand. The funding pots belong to the quest lane and are not this label's.
+export const CHANGE_SOON_LABEL = "works today · likely to change soon";
 
 // The lane the panel opens on when a reader arrives with no fragment.
 // Founder-ruled 2026-09-27: the Quest Guild ("make the Quest Guild the default
