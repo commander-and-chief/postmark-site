@@ -597,7 +597,9 @@ test("THE LAW: COMING SOON rides both surfaces, for exactly the lanes that are n
   // with nothing in the panel is a reader clicking through to find the promise
   // gone. And the fact has ONE owner: `LANES[].live`. A hardcoded pair of lane
   // names on this page would be correct today and a lie the moment one ships.
-  assert.ok(/{!lane\.live && <span class="cq-coming">/.test(raw),
+  // POS-1060: the Marketplace's card wears "changing soon" IN PLACE OF coming soon (Darko 2026-11-15, ruled on POS-1065), so the badge is
+  // read from the flag AND is not drawn on a lane that carries the replacement label; `live` itself is still the one owner of the fact.
+  assert.ok(/{!lane\.live && !lane\.changingSoon && <span class="cq-coming">/.test(raw),
     "the building's badge must be read from the lane's own live flag");
   assert.equal(/(marketplace|ballot-house|listings|votes)['"]\s*\)\s*&&\s*<span class="cq-coming"/.test(raw), false,
     "a lane is named by hand rather than read from LANES[].live");

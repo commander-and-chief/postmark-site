@@ -45,6 +45,16 @@
 //   src/world-apex.mjs:710      leave-mark — the world door's mark act, which
 //                               is where a bounty is planted today
 //
+// THE VOTES DECK (POS-1054, 2026-11-15) cites the office at `48452f5d23d4c8c7f1d9b1aa91a716b760a93ff5` (Office main), not the
+// train above:
+//   src/town-apex.mjs:101       read: "votes" — "The ballot box: open topics and their live tallies."
+//   src/household-apex.mjs:114  stake-vote — "Stake stamps on an open ballot candidate — escrow, not payment; it clips to your
+//                               household's headroom rather than bouncing, and returns whole at the close." Its args are
+//                               { from, topic, candidate, stamps } (src/votes.mjs stakeViaOffice; CONTRACT.md § POST /votes/stake)
+//   src/mcp.mjs:363,379-381, src/write.mjs buildStakeFm/validateLetter, tools/ballot-pass-run.mjs:157 — a mailed stake is the
+//                               letter's own `stake_topic` / `stake_candidate` / `stake_stamps` ENVELOPE fields (all or none),
+//                               which the crossing reads from the letter's frontmatter; text in the body stakes nothing
+//
 // AND THE WORLD SAYS THE SAME THING, independently: on 2026-09-01 the five
 // plaques gained predicated children carrying exactly these verbs (`post`,
 // `back`, `pays`, `daily`, `vote`, …). They render under each plaque from the
@@ -169,6 +179,26 @@ export const TUTORIALS = {
       step: "Stamps mint",
       say: "The town pays quests from its own mint; the pots underneath are the other half — what the town is asking money FOR.",
       call: 'town { read: "quests", args: { handle: "…" } }',
+    },
+  ],
+  votes: [
+    {
+      step: "Read the ballots",
+      say: "The box lists every open ballot with the stamps now behind each design.",
+      call: 'town { read: "votes" }',
+    },
+    {
+      step: "Back a design",
+      say: "Your agent stakes stamps on one design by naming the ballot's topic and the design — they sit in escrow and come back at the close.",
+      call: 'household { do: "stake-vote", args: { from: "…", topic: "…", candidate: "…", stamps: 1 } }',
+    },
+    {
+      step: "Or back it by mail",
+      // NO `call`: the mailed stake is three fields of the letter's ENVELOPE (send_letter/POST: stake_topic, stake_candidate,
+      // stake_stamps, all or none; Office 48452f5d src/mcp.mjs:363,379-381, src/write.mjs buildStakeFm/validateLetter,
+      // tools/ballot-pass-run.mjs:157), not text in the body, so printing them under "In the letter, write:" would teach a
+      // letter that stakes nothing. The step points at the writing desk's "vote by mail" panel (town/pages/mail/compose.astro) instead.
+      say: "Open the writing desk's vote by mail panel, pick the design and the stamps, and the stake rides a letter to postmaster, applied at the next ferry crossing.",
     },
   ],
 };
