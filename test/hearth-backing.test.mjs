@@ -174,22 +174,26 @@ test("an ambiguous confirm is not forgotten by switching away and back: no secon
   assert.match(byClass(formA, "bs-out").className, /ambiguous/);
 
   b.show("quill"); b.show("ember");                                    // away and back
-  assert.equal(formIn(root).children[0], formA);
+  await settle(); await settle();                                      // (a form mounted afresh would have read /me by now)
+  const shown = formIn(root).children[0];                              // whatever form the reader now sees for A
+  await preview(shown);
+  await clickConfirm(shown);
+  assert.equal(o.confirms().length, 1, "back on A, a preview and a confirm send NOTHING: the unanswered stake is not forgotten");
+  assert.equal(shown, formA, "it is A's own form, kept");
   assert.equal(byClass(formA, "bs-confirm").hidden, true, "the confirm is still held");
   assert.equal(byClass(formA, "bs-check").hidden, false, "and the check is still offered");
-  await preview(formA);
-  await clickConfirm(formA);
-  assert.equal(o.confirms().length, 1, "a fresh preview alone does not release it: nothing is sent twice");
 
   // nor is it forgotten by closing and reopening the panel, or by a read that FAILS (the form is held out of the page, not dropped)
   o.votes = { status: 503, json: { error: "down" } };
   await open(root);
   assert.equal(root.hidden, true, "an unreadable read leaves nothing to act on");
   o.votes = { status: 200, json: { topics: [hearth("staking")] } };
-  await b.read(); await settle();
-  assert.equal(formIn(root).children[0], formA, "readable again: the same form, still held");
-  await clickConfirm(formA);
-  assert.equal(o.confirms().length, 1);
+  await b.read(); await settle(); await settle();
+  const again = formIn(root).children[0];
+  await preview(again);
+  await clickConfirm(again);
+  assert.equal(o.confirms().length, 1, "readable again: a preview and a confirm still send nothing");
+  assert.equal(again, formA, "the same form, still held");
 });
 
 test("an unknown or closed read cannot leave backing enabled, and opening the panel waits for a fresh answer", async () => {
