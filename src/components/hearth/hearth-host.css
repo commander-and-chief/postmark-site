@@ -246,13 +246,27 @@
 
 /* "Design your own" (POS-1021): a quiet summary beside the dropdown that opens a panel (the settings panel's pattern) holding the town's setup prompt in the site's own
  * .prompt-box. The panel is wide enough to read the prompt, never wider than the view, and scrolls inside itself. */
-.hearth-setup { position: relative; }
-.hearth-setup-sum { list-style: none; cursor: pointer; display: inline-block; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--hx-chrome-line); color: var(--hx-chrome-link); white-space: nowrap; }
-.hearth-setup-sum::-webkit-details-marker { display: none; }
-.hearth-setup-sum:hover, .hearth-setup-sum:focus-visible, .hearth-setup[open] > .hearth-setup-sum { color: var(--hx-chrome-field-ink); background: var(--hx-chrome-field); }
+.hearth-setup, .hearth-backing { position: relative; }
+.hearth-setup-sum, .hearth-backing-sum { list-style: none; cursor: pointer; display: inline-block; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--hx-chrome-line); color: var(--hx-chrome-link); white-space: nowrap; }
+.hearth-setup-sum::-webkit-details-marker, .hearth-backing-sum::-webkit-details-marker { display: none; }
+.hearth-setup-sum:hover, .hearth-setup-sum:focus-visible, .hearth-setup[open] > .hearth-setup-sum,
+.hearth-backing-sum:hover, .hearth-backing-sum:focus-visible, .hearth-backing[open] > .hearth-backing-sum { color: var(--hx-chrome-field-ink); background: var(--hx-chrome-field); }
 .hearth-setup-panel { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; width: min(34rem, calc(100vw - 2rem)); box-sizing: border-box; }
 .hearth-setup-panel .prompt-box { margin: 0; border-color: var(--hx-chrome-line); }
 .hearth-setup-panel .prompt-box pre { max-height: min(60vh, 26rem); }
+
+/* "Back this design" (POS-1066 B): the same quiet summary, and a panel in the settings panel's surface holding /votes/'s stake form (ballot-stake.mjs draws
+ * it with its own sheet; here it takes the strip's colours, so its words sit on the field's surface in every theme the strip has). */
+.hearth-backing-panel { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; width: min(24rem, calc(100vw - 2rem)); box-sizing: border-box; padding: 0.7em 0.9em; border-radius: 8px; border: 1px solid var(--hx-chrome-line); background: var(--hx-chrome-field); color: var(--hx-chrome-field-ink); box-shadow: 0 6px 18px var(--hx-chrome-shade); font-family: var(--pm-serif, Georgia, serif); letter-spacing: normal; }
+.hearth-backing-ballot { margin: 0 0 0.6em; font-size: 0.78rem; line-height: 1.45; }
+.hearth-backing-note { margin: 0; font-size: 0.8rem; }
+.hearth-backing-panel .bs .bs-head { color: var(--hx-chrome-link); }
+.hearth-backing-panel .bs .bs-gate, .hearth-backing-panel .bs .bs-out .bs-line { opacity: 1; }
+.hearth-backing-panel .bs .bs-row select, .hearth-backing-panel .bs .bs-row input { background: var(--hx-chrome-field); color: var(--hx-chrome-field-ink); border: 1px solid var(--hx-chrome-line); border-radius: 6px; }
+.hearth-backing-panel .bs button, .hearth-backing-signin { font: 0.78rem/1 var(--pm-mono, monospace); padding: 0.6em 1em; border-radius: 999px; cursor: pointer; background: transparent; color: var(--hx-chrome-link); border: 1px solid var(--hx-chrome-line); }
+.hearth-backing-panel .bs button:hover, .hearth-backing-panel .bs button:focus-visible, .hearth-backing-signin:hover, .hearth-backing-signin:focus-visible { border-color: var(--hx-chrome-link); }
+.hearth-backing-panel .bs .bs-out.refused .bs-title, .hearth-backing-panel .bs .bs-out.ambiguous .bs-title { color: var(--hx-chrome-no); }
+.hearth-backing-panel .bs .bs-out.staked .bs-title { color: var(--hx-chrome-ok); }
 
 /* the dropdown (POS-962; the dropdown alone by POS-999 round 3, Darko 2026-11-12 08:56 EST): the preview select every reader has, the design's credit, and for the
  * house's signed-in human, while it shows another design than the kept one, a green check (save) and a red x (put it back) beside it. No words explain them;

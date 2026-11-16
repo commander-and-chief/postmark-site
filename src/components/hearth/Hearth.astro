@@ -94,6 +94,18 @@ const slotProps = { house, faces, plate, slug, bulletin };
     <HouseRail house={house} members={members} current="__house" reading>
       <Fragment slot="corner">
         <HearthPicker entries={pickable} selected={entry?.id ?? null} />
+        {/* "Back this design" (POS-1066 B): for ANY reader, beside the dropdown, while the Hearth ballot is staking and lists the design on screen
+            (lib/hearth/backing.mjs decides and fills it; it ships hidden). Its panel holds /votes/'s own stake form for that one design: the
+            signed-in human stakes as one of THEIR residents, and the office judges. The site's strip, never the design's region. */}
+        <details class="hearth-backing" data-hearth-backing hidden>
+          <summary class="hearth-backing-sum">Back this design</summary>
+          <div class="hearth-backing-panel">
+            <p class="hearth-backing-ballot" data-hearth-backing-ballot></p>
+            <p class="hearth-backing-note" data-hearth-backing-note role="status" hidden></p>
+            <div data-hearth-backing-form></div>
+            <button type="button" class="hearth-backing-signin" data-hearth-backing-signin hidden>Sign in</button>
+          </div>
+        </details>
         {/* "Design your own" (POS-1021): the town's one setup prompt, copyable, beside the dropdown. It draws only when the town has HEARTH-SETUP.md. */}
         <HearthSetup />
         {/* the house's own human only (stage.mjs shows it when the reader's sign-in holds a resident of this house; it ships hidden). A <details>, so the

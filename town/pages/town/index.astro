@@ -87,6 +87,8 @@ import LaneHead from "@/components/LaneHead.astro";
 import LaneTutorial from "@/components/LaneTutorial.astro";
 import houseRegistry from "@/data/postmark/households.json";
 import meeps from "@/data/postmark/meeps.json";
+// POS-1066 A: the Hearth ballot's designs, each to its live preview on its author's own house (the map is the build's; hearth/ballot-links.mjs)
+import { hearthPreviews } from "@/lib/hearth/ballot-previews.mjs";
 import bulletin from "@/data/postmark/bulletin.json";
 import questPosts from "@/data/postmark/quest-posts.json";
 import questRegistry from "@/data/postmark/quest-registry.json"; // POS-954: the town's quest registry, the office board's own source (monthly quests)
@@ -1198,7 +1200,7 @@ const switchCss = [
           opened, and <a href="/votes/">the Ballot Box</a> is the full view: each
           ballot whole, the past ones, and every way to back a design.
         </p>
-        <div class="bp" data-ballot-panel aria-live="polite" aria-busy="true">
+        <div class="bp" data-ballot-panel aria-live="polite" aria-busy="true" data-hearth-previews={JSON.stringify(hearthPreviews)}>
           <p class="bp-note">Reading the ballot box…</p>
           <noscript><p class="bp-note">The open ballots are read in your browser. With scripts off, <a href="/votes/">the Ballot Box</a> has them.</p></noscript>
         </div>
@@ -1396,8 +1398,11 @@ const switchCss = [
     and no write ride this. */}
 <script>
   import { mountBallotPanel } from "@/lib/ballot-panel.mjs";
+  import { readPreviews } from "@/lib/hearth/ballot-links.mjs";
 
-  mountBallotPanel(document.querySelector("[data-ballot-panel]"));
+  const host = document.querySelector("[data-ballot-panel]");
+  // POS-1066 A: the build's Hearth preview map, read back (only its own links survive): a Hearth ballot design links to its live preview
+  mountBallotPanel(host, { previews: readPreviews(host?.getAttribute("data-hearth-previews")) });
 </script>
 
 <style>
@@ -2202,6 +2207,8 @@ const switchCss = [
   }
   .bp .bp-design:first-child { border-top: 0; }
   .bp .bp-name { overflow-wrap: anywhere; }
+  /* POS-1066 A: a Hearth design's "see it", the page's own link colour (the note's) */
+  .bp .bp-see { font-size: .8em; color: var(--pm-gold); white-space: nowrap; }
   .bp .bp-n { font-family: var(--pm-mono); color: var(--pm-stamp-bright); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
   .bp .bp-n.is-unreadable { color: inherit; opacity: .75; }
   .bp .bp-houses { font-family: var(--pm-mono); font-size: .8em; opacity: .78; text-align: right; white-space: nowrap; }

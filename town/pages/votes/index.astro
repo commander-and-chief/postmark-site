@@ -15,6 +15,8 @@
 // a signed-in submit or stake of its own (staking is the existing doors, below).
 import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
 import { paint, tint, SPRITE_W, SPRITE_H } from "@/lib/civic-art.mjs";
+// POS-1066 A: the Hearth ballot's designs, each to its live preview on its author's own house (the map is the build's; ballot-links.mjs)
+import { hearthPreviews } from "@/lib/hearth/ballot-previews.mjs";
 
 const t = tint("votes");
 const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wash:${t.wash};--lane-wash-hover:${t.washHover}`;
@@ -44,7 +46,7 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
       </p>
     </header>
 
-    <div data-votes aria-live="polite">
+    <div data-votes aria-live="polite" data-hearth-previews={JSON.stringify(hearthPreviews)}>
       <p class="v-loading">Opening the ballot box…</p>
     </div>
 
@@ -184,10 +186,13 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
     // POS-502 (the household's human stakes from here: ballot-stake.mjs mounts the form into a staking ballot's slot)
     import { safeHref } from "@/lib/votes-render.mjs";
     import { mountBallotStake } from "@/lib/ballot-stake.mjs";
+    import { readPreviews, seeItHref } from "@/lib/hearth/ballot-links.mjs";
 
     (function () {
       var box = document.querySelector("[data-votes]");
       if (!box) return;
+      // POS-1066 A: a Hearth ballot's design is seen live on its author's house; the build wrote the map, and only its own links are read back
+      var previews = readPreviews(box.getAttribute("data-hearth-previews"));
 
       // Every string the office sent goes in as a text node: a topic or a design is authored upstream, and nothing here parses markup.
       function el(tag, cls, text) {
@@ -228,8 +233,15 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
           var words = [];
           if (c.credit) words.push(el("span", "v-cand-credit", "by " + c.credit));
           if (c.note) words.push(el("span", "v-cand-note", c.note));
-          var href = safeHref(c.link);
-          if (href) { var link = el("a", "v-cand-link", "see it →"); link.href = href; link.rel = "nofollow noopener"; words.push(link); }
+          // POS-1066 A: on the Hearth ballot, "see it" is the design's live preview on its author's house, in place of the office's link; any
+          // other choice (and a design this build cannot draw) keeps the office's https link exactly as before
+          var see = seeItHref(previews, t.topic, c.candidate);
+          var href = see || safeHref(c.link);
+          if (href) {
+            var link = el("a", "v-cand-link", "see it →"); link.href = href;
+            if (see) link.setAttribute("data-hearth-preview", c.candidate); else link.rel = "nofollow noopener";
+            words.push(link);
+          }
           if (c.households != null) words.push(el("span", "v-cand-houses", c.households + (c.households === 1 ? " household" : " households") + " backing"));
           if (words.length) {
             var p = el("p", "v-cand-words");
