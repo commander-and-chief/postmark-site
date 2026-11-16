@@ -303,5 +303,10 @@ test("a phone-width page: the panel and the cards fit, and no horizontal scroll 
   await p.evalJs(`(location.hash = "", history.replaceState(null, "", "/town/"), true)`);
   const cards = await p.evalJs(`[...document.querySelectorAll(".cq-b")].map((a) => { const r = a.getBoundingClientRect(); return { lane: a.getAttribute("data-lane"), l: r.left, r: r.right }; })`);
   for (const c of cards) assert.ok(c.l >= 0 && c.r <= 390.5, `the ${c.lane} card is on screen: ${JSON.stringify(c)}`);
+  // POS-1065: both clauses of the two chips stay whole at 390 px (wrapped, not clipped, inside their building's cell and the screen)
+  const chips = await p.evalJs(`[...document.querySelectorAll(".cq-change")].map((c) => { const cell = c.closest(".cq-b").getBoundingClientRect(), r = c.getBoundingClientRect();
+    return { text: c.textContent.trim(), clipped: c.scrollWidth > c.clientWidth + 1 || c.scrollHeight > c.clientHeight + 1, inside: r.left >= Math.max(0, cell.left - 1) && r.right <= Math.min(390.5, cell.right + 1) }; })`);
+  assert.equal(chips.length, 2);
+  for (const c of chips) assert.ok(c.text === "works today · likely to change soon" && !c.clipped && c.inside, `a chip is clipped or off screen at 390 px: ${JSON.stringify(chips)}`);
   await p.close();
 });
