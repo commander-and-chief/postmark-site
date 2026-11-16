@@ -284,7 +284,11 @@ test("the page wires it: the strip's details ships hidden beside the dropdown, o
   const stage = readFileSync(new URL("../src/lib/hearth/stage.mjs", import.meta.url), "utf8");
   const at = astro.indexOf("data-hearth-backing hidden");
   assert.ok(at > astro.indexOf("<HearthPicker") && at < astro.indexOf("<!--hearth-entry-->"), "in the strip's corner, after the dropdown, before the design's region");
-  assert.match(astro, /<summary class="hearth-backing-sum">Back this design<\/summary>/);
+  // POS-1066 visual FIX (Darko 22:54 EST via Wright 03:55:10Z: "vote-orange, and just keep the stamp icon purple"): the words unchanged, the site's pixel stamp beside them
+  assert.match(astro, /<summary class="hearth-backing-sum"><span class="hearth-backing-icon" aria-hidden="true" set:html=\{stampIcon\} \/>Back this design<\/summary>/);
+  assert.match(astro, /const stampIcon = iconSvg\("stamp", \{ size: 12 \}\);/, "the site's own stamp icon");
+  assert.match(astro, /const backingTint = `--hb-vote:\$\{ACCENTS\.votes\.A\};--hb-vote-edge:\$\{vote\.edgeOpen\};--hb-vote-wash:\$\{vote\.wash\};--hb-vote-wash-hover:\$\{vote\.washHover\}`;/, "the Ballot House's own orange, from the table /votes/ is tinted from");
+  assert.match(astro, /data-hearth-backing hidden style=\{backingTint\}>/);
   assert.match(stage, /mountHearthBacking\(backingRoot\)/, "mounted with nothing of the house's");
   assert.equal((stage.match(/backing\?\.show\((entry|first)\.id\)/g) ?? []).length, 2, "both places the stage names the design on screen");
   assert.doesNotMatch(stage.slice(stage.indexOf("hearthApi({")).split("\n")[0], /backing/, "the design's script is handed nothing of it");

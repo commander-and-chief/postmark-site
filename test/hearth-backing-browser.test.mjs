@@ -263,6 +263,49 @@ async function pick(p, id) {
   await p.until(`document.querySelector("[data-hearth-stage]")?.dataset.hearthEntry === ${JSON.stringify(id)}`, `${id} drawn`);
 }
 
+// POS-1066 visual FIX (Darko 2026-11-15 22:54 EST, via Wright 03:55:10Z): "oh actually, let's make it vote-orange, and just keep the stamp icon purple". The falsifiers
+// (the brief): the icon disappears, becomes orange with the button, the label changes, or the picker and the button clip or overlap; at 1280 and 390, shut and open.
+test("B's look: the control is vote-orange with the stamp icon in stamp purple, its words unchanged; it fits beside the picker at 1280 and 390, shut and open", { skip: SKIP }, async () => {
+  await setup();
+  const VOTE = "rgb(201, 130, 61)", STAMP = "rgb(170, 143, 216)";   // civic-art.mjs ACCENTS.votes.A; postmark.css --pm-stamp
+  for (const width of [1280, 390]) {
+    const o = office();
+    const p = await openPage(browser, base, `/households/${VISITED}/?entry=${A}`, { width, height: 844, office: o, signedIn: true });
+    await p.until(shown(BACKING), "Back this design");
+    const look = () => p.evalJs(`(() => {
+      const rgb = (s) => (s.match(/[\\d.]+/g) || []).map(Number);
+      const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+      const sum = document.querySelector(".hearth-backing-sum"), icon = sum.querySelector(".hearth-backing-icon"), svg = icon?.querySelector("svg");
+      const pick = document.querySelector("[data-hearth-lb-btn]").getBoundingClientRect(), r = sum.getBoundingClientRect(), ir = svg ? svg.getBoundingClientRect() : null;
+      // the words' contrast: the summary's own wash laid over the first opaque background behind it (the page's night; a gradient image is not sampled)
+      let under = null; for (let x = sum.parentElement; x && !under; x = x.parentElement) { const b = rgb(getComputedStyle(x).backgroundColor); if ((b[3] ?? 1) === 1 && b.length >= 3) under = b; }
+      under = under || rgb(getComputedStyle(document.body).backgroundColor);
+      const w = rgb(getComputedStyle(sum).backgroundColor), wa = w[3] ?? 1, bg = under.slice(0, 3).map((v, i) => w[i] * wa + v * (1 - wa));
+      const [L1, L2] = [lum(rgb(getComputedStyle(sum).color)), lum(bg)].sort((a, b) => b - a);
+      const overlap = !(r.right <= pick.left || pick.right <= r.left || r.bottom <= pick.top || pick.bottom <= r.top);
+      return { words: sum.textContent.trim(), color: getComputedStyle(sum).color, iconColor: icon ? getComputedStyle(icon).color : null, iconSize: ir ? [Math.round(ir.width), Math.round(ir.height)] : null,
+        iconHidden: icon?.getAttribute("aria-hidden"), iconFocusable: svg?.getAttribute("focusable"), wash: getComputedStyle(sum).backgroundColor,
+        onScreen: r.left >= 0 && r.right <= innerWidth + 0.5, clipped: sum.scrollWidth > sum.clientWidth + 0.5, overlap, ratio: Math.round(((L1 + 0.05) / (L2 + 0.05)) * 10) / 10, scrollW: document.documentElement.scrollWidth, w: innerWidth };
+    })()`);
+    const shut = await look();
+    assert.equal(shut.words, "Back this design", `${width}: the label is unchanged`);
+    assert.equal(shut.color, VOTE, `${width}: the words are the vote-orange`);
+    assert.equal(shut.iconColor, STAMP, `${width}: the stamp icon is stamp purple, not orange with the button`);
+    assert.ok(shut.iconSize && shut.iconSize[0] >= 10 && shut.iconSize[1] >= 10, `${width}: the icon is drawn (${JSON.stringify(shut.iconSize)})`);
+    assert.deepEqual([shut.iconHidden, shut.iconFocusable], ["true", "false"], `${width}: the icon is decorative and not focusable`);
+    assert.deepEqual([shut.onScreen, shut.clipped, shut.overlap], [true, false, false], `${width}: on screen, unclipped, clear of the picker: ${JSON.stringify(shut)}`);
+    assert.ok(shut.scrollW <= shut.w, `${width}: no sideways scroll`);
+    assert.ok(shut.ratio >= 4.5, `${width}: the words read at ${shut.ratio}:1`);
+    await openPanel(p, o);
+    const open = await look();
+    assert.deepEqual([open.words, open.color, open.iconColor], ["Back this design", VOTE, STAMP], `${width}: open, the same words and colours`);
+    assert.notEqual(open.wash, shut.wash, `${width}: open deepens the wash`);
+    assert.deepEqual([open.onScreen, open.clipped, open.overlap], [true, false, false], `${width}: open, still clear: ${JSON.stringify(open)}`);
+    assert.ok(open.ratio >= 4.5, `${width}: open, the words read at ${open.ratio}:1`);
+    await p.close();
+  }
+});
+
 test("B: a signed-in visitor backs the design ON SCREEN as their own resident; switching designs cannot confirm one as the other; the save stays the house's", { skip: SKIP }, async () => {
   await setup();
   const o = office();

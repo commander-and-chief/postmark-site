@@ -264,8 +264,15 @@
 .hearth-setup, .hearth-backing { position: relative; }
 .hearth-setup-sum, .hearth-backing-sum { list-style: none; cursor: pointer; display: inline-block; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--hx-chrome-line); color: var(--hx-chrome-link); white-space: nowrap; }
 .hearth-setup-sum::-webkit-details-marker, .hearth-backing-sum::-webkit-details-marker { display: none; }
-.hearth-setup-sum:hover, .hearth-setup-sum:focus-visible, .hearth-setup[open] > .hearth-setup-sum,
-.hearth-backing-sum:hover, .hearth-backing-sum:focus-visible, .hearth-backing[open] > .hearth-backing-sum { color: var(--hx-chrome-field-ink); background: var(--hx-chrome-field); }
+.hearth-setup-sum:hover, .hearth-setup-sum:focus-visible, .hearth-setup[open] > .hearth-setup-sum { color: var(--hx-chrome-field-ink); background: var(--hx-chrome-field); }
+/* "Back this design" in the VOTE-ORANGE, with its stamp icon in STAMP PURPLE (POS-1066 visual FIX; Darko 2026-11-15 22:54 EST, via Wright 03:55:10Z). The oranges are
+ * the Ballot House's own, handed in by Hearth.astro from civic-art.mjs (`--hb-vote*`: ACCENTS.votes.A for the words, tint("votes") for the edge and washes); the
+ * purple is the stamp family's. Hover, keyboard focus and open deepen the wash and the edge; the words and the icon keep their colours in every state. */
+.hearth-backing-sum { display: inline-flex; align-items: center; gap: 0.4em; color: var(--hb-vote); border-color: var(--hb-vote-edge); background: var(--hb-vote-wash); }
+.hearth-backing-sum:hover, .hearth-backing-sum:focus-visible, .hearth-backing[open] > .hearth-backing-sum { color: var(--hb-vote); border-color: var(--hb-vote); background: var(--hb-vote-wash-hover); }
+.hearth-backing-sum:focus-visible { outline: 2px solid var(--hb-vote); outline-offset: 1px; }
+.hearth-backing-icon { display: inline-flex; flex: none; color: var(--pm-stamp); }
+.hearth-backing-icon svg { display: block; }
 .hearth-setup-panel { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; width: min(34rem, calc(100vw - 2rem)); box-sizing: border-box; }
 .hearth-setup-panel .prompt-box { margin: 0; border-color: var(--hx-chrome-line); }
 .hearth-setup-panel .prompt-box pre { max-height: min(60vh, 26rem); }
