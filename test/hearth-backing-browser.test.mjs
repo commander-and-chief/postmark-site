@@ -236,6 +236,26 @@ async function openPanel(p, o) {
   for (const end = Date.now() + 15_000; reads() === before;) { if (Date.now() > end) throw new Error("opening the panel made no fresh read"); await new Promise((r) => setTimeout(r, 50)); }
   await p.until(`document.querySelector("[data-hearth-backing-note]").hidden`, "the fresh read answered");
 }
+/**
+ * CONTRAST: every element in the open panel that shows words (a text node, or a field's own value), its computed colour over the surface it sits on (the
+ * panel's, or the field's own), at 4.5:1. The surface must be opaque for the number to mean anything. `atLeast` keeps the measure from passing on nothing.
+ */
+async function readsOnItsSurface(p, atLeast) {
+  const pairs = await p.evalJs(`(() => {
+    const rgb = (s) => (s.match(/[\\d.]+/g) || []).map(Number);
+    const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+    const panel = document.querySelector(".hearth-backing-panel");
+    const surface = (e) => { for (let x = e; x && x !== panel.parentElement; x = x.parentElement) { const b = rgb(getComputedStyle(x).backgroundColor); if ((b[3] ?? 1) > 0) return b; } return [0, 0, 0, 0]; };
+    return [...panel.querySelectorAll("*")].filter((e) => e.getClientRects().length && (/^(INPUT|SELECT)$/.test(e.tagName) ? e.value : [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()))).map((e) => {
+      const bg = surface(e), c = rgb(getComputedStyle(e).color), a = c[3] ?? 1, mix = c.slice(0, 3).map((v, i) => v * a + bg[i] * (1 - a));
+      const [L1, L2] = [lum(mix), lum(bg)].sort((x, y) => y - x);
+      return { text: (e.value || e.textContent).trim().slice(0, 30), ratio: Math.round(((L1 + 0.05) / (L2 + 0.05)) * 10) / 10, bgAlpha: bg[3] ?? 1 };
+    });
+  })()`);
+  assert.ok(pairs.length >= atLeast, `the panel's words were measured: ${JSON.stringify(pairs)}`);
+  for (const x of pairs) { assert.equal(x.bgAlpha, 1, `"${x.text}" sits on an opaque surface`); assert.ok(x.ratio >= 4.5, `"${x.text}" reads at ${x.ratio}:1`); }
+  return pairs;
+}
 async function pick(p, id) {
   await p.click("[data-hearth-lb-btn]");
   await p.until(shown(`#hearth-opt-${id}`), `the ${id} option`);
@@ -262,6 +282,7 @@ test("B: a signed-in visitor backs the design ON SCREEN as their own resident; s
   await p.click("[data-hearth-backing-form] .bs-preview");
   await p.until(shown("[data-hearth-backing-form] .bs-confirm"), "the confirm, after the preview");
   assert.equal(o.posts.length, 1);
+  await readsOnItsSurface(p, 10);                                     // the whole signed-in form and its preview, read on the panel
 
   await pick(p, B);                                                   // switch the dropdown to B: B's own form, nothing previewed
   const onB = await p.evalJs(`({ on: [...document.querySelectorAll("[data-hearth-backing-form] select[name=candidate] option")].map((o) => o.value), confirm: ${shown("[data-hearth-backing-form] .bs-confirm")}, open: document.querySelector(${JSON.stringify(BACKING)}).open })`);
@@ -314,19 +335,6 @@ test("B signed out: the form says to sign in and the panel offers the site's sig
   const m = await p.evalJs(`(() => { const r = document.querySelector(".hearth-backing-panel").getBoundingClientRect(); return { l: r.left, r: r.right, w: innerWidth, scrollW: document.documentElement.scrollWidth }; })()`);
   assert.ok(m.l >= 0 && m.r <= m.w + 0.5, `the panel runs off a 390 px screen: ${JSON.stringify(m)}`);
   assert.ok(m.scrollW <= m.w, `the page scrolls sideways: ${JSON.stringify(m)}`);
-  // CONTRAST: every text element in the open panel, its computed colour over the panel's own surface (opaque), at 4.5:1
-  const pairs = await p.evalJs(`(() => {
-    const rgb = (s) => (s.match(/[\\d.]+/g) || []).map(Number);
-    const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
-    const panel = document.querySelector(".hearth-backing-panel");
-    const bg = rgb(getComputedStyle(panel).backgroundColor);
-    return [...panel.querySelectorAll("*")].filter((e) => e.getClientRects().length && [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())).map((e) => {
-      const c = rgb(getComputedStyle(e).color), a = c[3] ?? 1, mix = c.slice(0, 3).map((v, i) => v * a + bg[i] * (1 - a));
-      const [L1, L2] = [lum(mix), lum(bg)].sort((x, y) => y - x);
-      return { text: e.textContent.trim().slice(0, 30), ratio: Math.round(((L1 + 0.05) / (L2 + 0.05)) * 10) / 10, bgAlpha: bg[3] ?? 1 };
-    });
-  })()`);
-  assert.ok(pairs.length >= 3, `the panel's words were measured: ${JSON.stringify(pairs)}`);
-  for (const x of pairs) { assert.equal(x.bgAlpha, 1, "the panel's surface is opaque"); assert.ok(x.ratio >= 4.5, `"${x.text}" reads at ${x.ratio}:1`); }
+  await readsOnItsSurface(p, 3);
   await p.close();
 });
