@@ -57,7 +57,7 @@ test("no site-authored text says 'changing soon' any more, and 'coming soon' is 
   assert.match(page, /\{!lane\.live && !lane\.paused && <span class="cq-coming">coming soon<\/span>\}/);
   assert.match(page, /\{lane\.paused && <span class="cq-paused">\{PAUSED_LABEL\}<\/span>\}/);
   const head = said(read("src/components/LaneHead.astro"));
-  assert.match(head, /lane\.paused\s*\?\s*<p class="c-coming-head">\{PAUSED_LABEL\}<\/p>\s*:\s*!lane\.live && <p class="c-coming-head">Coming soon<\/p>/, "the opened heading: paused for a paused lane, coming soon only for another not-live one");
+  assert.match(head, /\{lane\.paused\s*\?\s*<p class="c-coming-head">\{PAUSED_LABEL\}<\/p>\s*:\s*!lane\.live && <p class="c-coming-head">Coming soon<\/p>\}/, "the opened heading: paused for a paused lane, coming soon only for another not-live one");
   // every lane that the page would draw coming-soon for: none is one of the two
   assert.deepEqual(LANES.filter((l) => !l.live && !l.paused).map((l) => l.key), [], "no lane reads coming soon today");
 });
