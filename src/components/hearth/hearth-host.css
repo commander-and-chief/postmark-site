@@ -69,6 +69,21 @@
 .hearth-stage .hx-left { font-family: var(--pm-mono); font-size: 0.8rem; color: var(--hx-accent); margin-top: 0.2em; }
 
 /* ── panels, the feed and its chips ── */
+/* ── coming up (POS-1068): the old dashboard's event rows, in the Hearth's own tokens ── */
+.hearth-stage .hd-events { margin-top: 0.6em; }
+.hearth-stage .hd-events .hd-event { display: grid; grid-template-columns: 5.2em minmax(0, 1fr) auto; gap: 1em; align-items: center; background: var(--hx-glass); border: 1px solid var(--hx-hair); border-radius: var(--hx-radius); padding: 0.8em 1em; margin-bottom: 0.7em; }
+.hearth-stage .hd-events .hd-date { text-align: center; border-right: 1px solid var(--hx-hair); padding-right: 0.9em; }
+.hearth-stage .hd-events .hd-date .d { font-size: 1.7rem; color: var(--hx-warm); line-height: 1; }
+.hearth-stage .hd-events .hd-date .m { font-family: var(--pm-mono); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--hx-ink); opacity: 0.8; }
+.hearth-stage .hd-events h3 { margin: 0; font-size: 1.1rem; }
+.hearth-stage .hd-events h3 a { color: var(--hx-warm); }
+.hearth-stage .hd-events p { margin: 0.15em 0 0; font-size: 0.88rem; }
+.hearth-stage .hd-events .hd-going { display: flex; gap: 0.5em; flex-wrap: wrap; justify-content: flex-end; font-size: 0.85rem; }
+.hearth-stage .hd-events .hd-empty { padding-left: 0; }
+@media (max-width: 760px) {
+  .hearth-stage .hd-events .hd-event { grid-template-columns: 4em minmax(0, 1fr); }
+  .hearth-stage .hd-events .hd-going { grid-column: 1 / -1; justify-content: flex-start; }
+}
 .hearth-stage .hd-panel { background: var(--hx-glass); border: 1px solid var(--hx-hair); border-radius: var(--hx-radius); padding: 1em 1.1em 0.8em; }
 .hearth-stage .hd-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.4em 0.8em; flex-wrap: wrap; margin-bottom: 0.4em; }
 .hearth-stage .hd-ghost { font-family: var(--pm-mono); font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; border: 1px solid var(--hx-hair); border-radius: 999px; padding: 3px 10px; color: var(--hx-accent); background: transparent; cursor: pointer; }
