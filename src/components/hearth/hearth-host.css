@@ -267,6 +267,12 @@
 .hearth-backing-panel .bs button:hover, .hearth-backing-panel .bs button:focus-visible, .hearth-backing-signin:hover, .hearth-backing-signin:focus-visible { border-color: var(--hx-chrome-link); }
 .hearth-backing-panel .bs .bs-out.refused .bs-title, .hearth-backing-panel .bs .bs-out.ambiguous .bs-title { color: var(--hx-chrome-no); }
 .hearth-backing-panel .bs .bs-out.staked .bs-title { color: var(--hx-chrome-ok); }
+/* on a phone the summary can sit anywhere in the corner's wrapped row, so a panel hung from its right edge runs off the screen (measured at 390 px: 134 px
+   off the left): there the open control takes the row's whole width and the panel flows under its summary instead */
+@media (max-width: 520px) {
+  .hearth-backing[open] { flex: 1 1 100%; }
+  .hearth-backing-panel { position: static; width: auto; margin-top: 6px; }
+}
 
 /* the dropdown (POS-962; the dropdown alone by POS-999 round 3, Darko 2026-11-12 08:56 EST): the preview select every reader has, the design's credit, and for the
  * house's signed-in human, while it shows another design than the kept one, a green check (save) and a red x (put it back) beside it. No words explain them;
