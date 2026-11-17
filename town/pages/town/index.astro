@@ -75,7 +75,7 @@ import { loadWorldState, notices, FIXTURE, BOARD_PLACE, ASK_MAX } from "@/lib/bo
 // import kept "just in case" is how a struck block finds its way back, which
 // this page has now been taught twice (HOLO_LINE was the first).
 import {
-  LANES, DEFAULT_LANE, CHANGE_SOON_LABEL, standing, ideas, questStandings, questCards, questBoardFrom, townDay, marketplace, PAIR_RULE,
+  LANES, DEFAULT_LANE, CHANGE_SOON_LABEL, standing, ideas, questStandings, questCards, questBoardFrom, monthTallies, townDay, marketplace, PAIR_RULE,
   readPen, loadPlaceMarks, plaque, markStakes, stakeOf,
   ideaDashboard, boardDashboard, worldPin,
   BLUEPRINTS_REPO, THINK_TANK_PLACE,
@@ -177,10 +177,12 @@ const quests = questStandings(bulletin);
 // /posts?class=quest, baked as quest-posts.json.
 // A quest with an `ends` is offered through that town day (POS-857), the day this build ran in.
 // A MONTHLY quest is drawn from the registry the office's board reads (POS-954): no post need name it (civic.mjs § questBoardFrom).
-const questRows = questCards(quests, questBoardFrom(questPosts, { today: townDay(), registry: questRegistry }));
 // FERRY'S HALL OF FAME (POS-967): this month's top five, from the same view the
 // full board draws, in the town's month (townDay), never the runner's.
 const hallPreview = hallView(loadHall(), { today: townDay(), limit: 5, letterBook: letterAddresses(threads, letters) });
+// BRING A NEIGHBOUR'S CARD SHOWS THE TOWN'S MONTH (POS-885): the Guild is town-wide, so the card says how many neighbours the whole
+// town brought this month (the Hall's month record, the same ledger the board's per-household count reads), not "N of 10".
+const questRows = questCards(quests, questBoardFrom(questPosts, { today: townDay(), registry: questRegistry }), monthTallies(questRegistry, hallPreview));
 const market = marketplace(bulletin);
 
 // THE FIVE PLAQUES, per lane, read from the record. No sentence below is typed
@@ -582,7 +584,15 @@ const switchCss = [
                       position is invisible to that stripper — so quoting the
                       struck line there turned the removal's own falsifier red
                       about a page that was already correct. */}
-                  {q.done != null && q.of ? (
+                  {/* A MONTHLY QUEST THE WHOLE TOWN COUNTS (POS-885): one town figure in place of the daily board's snapshot. A null is the
+                      honest unavailable, never a zero. */}
+                  {"monthTotal" in q ? (
+                    q.monthTotal != null ? (
+                      <p class="m-barlab"><b>{q.monthTotal}</b> {q.monthTotal === 1 ? "neighbour" : "neighbours"} brought this month <span class="m-dim">· town total</span></p>
+                    ) : (
+                      <p class="m-barlab m-dim">Town count unavailable</p>
+                    )
+                  ) : q.done != null && q.of ? (
                     <div class="m-bar-wrap">
                       <div class="m-bar" role="img" aria-label={`${q.done} of ${q.of} on this board completed this (board snapshot)`}>
                         <i style={`width:${Math.max(2, pct(q.done / q.of))}%`}></i>
