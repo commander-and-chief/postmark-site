@@ -17,6 +17,13 @@
 
 export const DOORSTEPS_PER_READ = 25;
 
+/**
+ * The version of the office's `global` part this reader can patch (office src/doorstep-rev.mjs § GLOBAL_VERSION): the five
+ * as_of-derived leaves and the town-wide blocks (`global.town_wide`). Sent as `&global=2` beside `known`; an office that does not
+ * know it ignores `known` or answers a `global` without this version, and neither is believed (see readDoorsteps).
+ */
+export const GLOBAL_VERSION = 2;
+
 const HEADERS = { "user-agent": "starforge-atelier-extractor", accept: "application/json" };
 
 /** One doorstep from the single door: `{ body, fetchedAt }`, or a throw naming why not. */
@@ -35,10 +42,11 @@ export async function readDoorstep(handle, { apiBase, fetchImpl = fetch, now = (
  * where `inBulk` counts the handles the office's bulk read answered.
  *
  * `known` (POS-1086, office w47.12): a Map handle → rev the caller holds. The bulk read sends it as
- * `&known=handle:rev,…`, and the office answers `{ handle, unchanged: true, rev }` for a match instead of the
- * body, with the five town-wide leaves once as `global`. An unchanged row is `{ unchanged: true, rev, global, fetchedAt }`
- * (the moment the office said so). A chunk whose unchanged rows come without a `global` is not trusted: it is read
- * singly, whole. `bulkBodies` names the handles whose whole body came through the bulk read, so a caller records
+ * `&known=handle:rev,…&global=2`, and the office answers `{ handle, unchanged: true, rev }` for a match instead of the
+ * body, with the five town-wide leaves and the town-wide blocks (copy, next_crossing, bulletin, town_pulse, psa, town)
+ * once as `global`. An unchanged row is `{ unchanged: true, rev, global, fetchedAt }` (the moment the office said so).
+ * A chunk whose unchanged rows come without a `global` of version 2 holding `town_wide` is not trusted: it is asked
+ * again without `known`, and so answered whole. `bulkBodies` names the handles whose whole body came through the bulk read, so a caller records
  * revs only from the bulk read. An office with no `known` ignores it and answers whole bodies.
  */
 export async function readDoorsteps(handles, { apiBase, fetchImpl = fetch, now = () => new Date().toISOString(), per = DOORSTEPS_PER_READ, known = null } = {}) {
@@ -54,21 +62,29 @@ export async function readDoorsteps(handles, { apiBase, fetchImpl = fetch, now =
     const chunk = handles.slice(i, i + per);
     let answered = null;
     if (bulk) {
-      try {
-        const held = known ? chunk.filter((h) => known.has(h)).map((h) => `${h}:${known.get(h)}`) : [];
-        const res = await fetchImpl(`${apiBase}/doorsteps?handles=${chunk.join(",")}${held.length ? `&known=${held.join(",")}` : ""}`, { headers: HEADERS, signal: AbortSignal.timeout(60000) });
-        if (res.status === 404) bulk = false; // an office with no bulk door
-        else if (res.ok) {
-          const body = await res.json();
-          const at = now();
-          const heldRev = (d) => known?.get(d.handle);
-          const whole = Array.isArray(body?.doorsteps) && body.doorsteps.length === chunk.length
-            && body.doorsteps.every((d, j) => d?.handle === chunk[j])
-            // an unchanged row is believed only for a rev this caller sent, and only with the town-wide leaves beside it
-            && body.doorsteps.every((d) => d.unchanged !== true || (heldRev(d) !== undefined && d.rev === heldRev(d) && body.global && typeof body.global === "object"));
-          if (whole) answered = { rows: body.doorsteps, at, global: body.global ?? null };
-        }
-      } catch { /* this chunk is read singly */ }
+      const held = known ? chunk.filter((h) => known.has(h)).map((h) => `${h}:${known.get(h)}`) : [];
+      // With a rev to claim, the chunk is asked with `known` first; an office whose `unchanged` rows cannot be trusted (an older
+      // office: no `global.town_wide`) is asked again without it, so it answers whole bodies in one read, not 25 single ones.
+      for (const claim of held.length ? [held, []] : [[]]) {
+        if (answered || !bulk) break;
+        try {
+          const res = await fetchImpl(`${apiBase}/doorsteps?handles=${chunk.join(",")}${claim.length ? `&known=${claim.join(",")}&global=${GLOBAL_VERSION}` : ""}`, { headers: HEADERS, signal: AbortSignal.timeout(60000) });
+          if (res.status === 404) bulk = false; // an office with no bulk door
+          else if (res.ok) {
+            const body = await res.json();
+            const at = now();
+            const heldRev = (d) => (claim.length ? known?.get(d.handle) : undefined);
+            const g = body?.global;
+            // the town-wide blocks the office hands back once: believed only at the version this reader patches
+            const patchable = g && typeof g === "object" && g.version === GLOBAL_VERSION && g.town_wide && typeof g.town_wide === "object";
+            const whole = Array.isArray(body?.doorsteps) && body.doorsteps.length === chunk.length
+              && body.doorsteps.every((d, j) => d?.handle === chunk[j])
+              // an unchanged row is believed only for a rev this caller sent, and only with the town-wide leaves and blocks beside it
+              && body.doorsteps.every((d) => d.unchanged !== true || (heldRev(d) !== undefined && d.rev === heldRev(d) && patchable));
+            if (whole) answered = { rows: body.doorsteps, at, global: body.global ?? null };
+          }
+        } catch { break; /* this chunk is read singly */ }
+      }
     }
     if (!answered) { for (const handle of chunk) await single(handle); continue; }
     inBulk += chunk.length;
