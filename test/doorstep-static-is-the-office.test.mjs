@@ -392,14 +392,19 @@ test("THE HOIST: the clock is read once per office answer, never once per run", 
   // the hoisted clock is gone, and cannot come back under its old name
   assert.equal(/const builtAt\s*=\s*new Date\(\)/.test(src), false,
     "a single run-start timestamp stamped on every file is the defect itself");
-  assert.equal(/new Date\(\)/.test(src.slice(src.indexOf("readDoorsteps("), src.indexOf("doorstep_fetched_at: fetchedAt,"))), false,
+  assert.equal(/new Date\(\)/.test(src.slice(src.indexOf("refreshDoorsteps("), src.indexOf("doorstep_fetched_at: fetchedAt,") + 1)), false,
     "no clock between the reads and the stamp: the stamp is the answer's, not the loop's");
 
-  // and the stamp is written inside the per-resident loop
-  const loopAt = src.indexOf("for (const r of town.residents) {\n    // A handle whose file we cannot refresh");
+  // and the stamp is written inside the per-resident composition, which the refresh calls once per resident (POS-1086:
+  // the per-resident loop moved to tools/lib/doorstep-refresh.mjs, and `build` is what it calls)
+  const buildAt = src.indexOf("const build = (handle, office, fetchedAt) => {");
   const stampAt = src.indexOf("doorstep_fetched_at: fetchedAt,");
-  assert.ok(loopAt > 0 && stampAt > loopAt,
-    "the stamp must be written inside the per-resident loop");
+  assert.ok(buildAt > 0 && stampAt > buildAt,
+    "the stamp must be written inside the per-resident composition");
+  const refresh = readFileSync(join(HERE, "..", "tools", "lib", "doorstep-refresh.mjs"), "utf8").replace(/\r\n/g, "\n");
+  assert.equal(/new Date\(\)/.test(refresh), false, "the refresh reads no clock of its own: every stamp is an answer's");
+  assert.match(refresh, /for \(const handle of handles\) \{[\s\S]*build\(handle, office, fetchedAt\)/,
+    "the composition runs once per resident, with that resident's own stamp");
 });
 
 test("the page points at the live door it mirrors", () => {
