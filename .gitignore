@@ -47,3 +47,6 @@ qa-shots/**/*.jpg
 qa-shots/**/*.jpeg
 qa-shots/**/*.webp
 qa-shots/**/*.gif
+
+# the refresh's incremental doorstep state, when DOORSTEP_STATE_DIR is unset (POS-1086): ~392 files a local run leaves
+src/data/postmark/doorstep-state/
