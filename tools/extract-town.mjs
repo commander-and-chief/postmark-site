@@ -43,7 +43,7 @@ import {
   excerptOf, ferryHeadline, stakePositions, splitArrivals, isBounceNotice,
   composeDoorstep, renderDoorstepMarkdown, DOORSTEP_SITE_KEYS,
 } from "./lib/doorstep.mjs";
-import { readDoorsteps } from "./lib/doorstep-reads.mjs";
+import { refreshDoorsteps, builderFingerprint } from "./lib/doorstep-refresh.mjs";
 import {
   QUOTED_IMAGE_REF_RE, ATTR_REF_RE, githubUrl, byteMirror,
   findLeftoverImageRef, findRelativeRef, writeIfChanged, injectBaseTarget,
@@ -550,33 +550,27 @@ emit("stats.json", {
   // Each answer comes with the moment it arrived (tools/lib/doorstep-reads.mjs
   // says why that is the only true answer-time). Read in bulk, 25 a request,
   // where the office has `/doorsteps`, and one by one where it does not.
-  const { doorsteps: officeDoorsteps, inBulk } = await readDoorsteps(town.residents.map((r) => r.handle), { apiBase: POSTMARK_API });
-  console.log(`doorstep: ${inBulk} of ${town.residents.length} read in bulk (/doorsteps), the rest one by one`);
-
+  //
+  // WHAT IS ASKED (POS-1086): only the residents whose doorstep moved. The office gives
+  // each doorstep a `rev` (the hash of its content), and `/doorsteps?known=` answers
+  // "unchanged" for a rev this refresh already holds; tools/lib/doorstep-refresh.mjs
+  // carries that resident's office part over and composes the site's own rows again
+  // below, so the file is what a full fetch of the same inputs writes. A full pass:
+  // `--full-doorsteps` (or DOORSTEPS_FULL=1), and the first run after a deploy.
   const DOORSTEP_DIR = join(PUB_DATA, "doorstep");
   mkdirSync(DOORSTEP_DIR, { recursive: true });
   const doorstepWanted = new Set();
-  let dWrote = 0, dKept = 0, dStale = 0;
   // every thread row's link lands on the page that holds the letter (POS-320)
   const letterBook = letterAddresses(town.threads, town.letters);
+  const byHandle = new Map(town.residents.map((r) => [r.handle, r]));
+  // A handle whose file we cannot refresh keeps BOTH its files, untouched and
+  // un-pruned. Marked wanted before the fetch so a failure cannot make the
+  // stray-sweep below delete a resident's doorstep outright.
+  for (const r of town.residents) { doorstepWanted.add(`${r.handle}.json`); doorstepWanted.add(`${r.handle}.md`); }
 
-  for (const r of town.residents) {
-    // A handle whose file we cannot refresh keeps BOTH its files, untouched and
-    // un-pruned. Marked wanted before the fetch so a failure cannot make the
-    // stray-sweep below delete a resident's doorstep outright.
-    doorstepWanted.add(`${r.handle}.json`);
-    doorstepWanted.add(`${r.handle}.md`);
-
-    const { body: office, fetchedAt, error } = officeDoorsteps.get(r.handle);
-    if (error) {
-      // KEEP THE PREVIOUS FILE AND SAY SO. Never a thinner file, never a
-      // locally-rebuilt one: the kept file's own `site.doorstep_fetched_at`
-      // stamp is what tells its reader how old the answer under it is.
-      console.warn(`WARN doorstep: ${r.handle} — office unreachable (${error}); previous file kept, its own stamp discloses its age`);
-      dStale++;
-      continue;
-    }
-
+  // The site's composition of one resident's two files, from the office's answer and this pass's own inputs.
+  const build = (handle, office, fetchedAt) => {
+    const r = byHandle.get(handle);
     const login = (r.address?.data?.github ?? "").toLowerCase();
     // NO SILENT CAP IN THE JSON. These lists used to be cut here — prs to 10,
     // the GitHub replies to 6 — so a downstream reader could not recover the
@@ -677,18 +671,28 @@ emit("stats.json", {
 
     const md = renderDoorstepMarkdown(bundle, { townBase: TOWN_BASE, titleOf: threadTitle, mailHref: (id) => letterHref(id, letterBook) });
 
-    for (const [name, text] of [
-      [`${r.handle}.json`, JSON.stringify(bundle, null, 1) + "\n"],
-      [`${r.handle}.md`, md],
-    ]) {
-      const w = writeIfChanged(join(DOORSTEP_DIR, name), text);
-      w === "wrote" ? dWrote++ : dKept++;
-    }
-  }
+    return { json: JSON.stringify(bundle, null, 1) + "\n", md };
+  };
+
+  // the state the incremental pass reads: each handle's last rev (from the bulk read only), and the builder it was written by
+  // plus each resident's last office part. They live OUTSIDE the tree when DOORSTEP_STATE_DIR names a directory: the box's
+  // site-refresh.sh checks the tree out with -f and cleans it before every pass, so nothing inside it survives (POS-1086).
+  // Unset, it is src/data/postmark/doorstep-state/, for a local run.
+  const DOORSTEP_STATE_DIR = process.env.DOORSTEP_STATE_DIR ? resolve(process.env.DOORSTEP_STATE_DIR) : join(DATA_DIR, "doorstep-state");
+  const builder = builderFingerprint([
+    fileURLToPath(import.meta.url), join(HERE, "lib", "doorstep.mjs"), join(HERE, "lib", "doorstep-reads.mjs"),
+    join(HERE, "lib", "doorstep-refresh.mjs"), join(HERE, "lib", "ids.mjs"), join(SITE_ROOT, "src", "lib", "mail.mjs"),
+  ]);
+  const { stats } = await refreshDoorsteps(town.residents.map((r) => r.handle), {
+    apiBase: POSTMARK_API, dir: DOORSTEP_DIR, stateDir: DOORSTEP_STATE_DIR, builder, build,
+    full: process.argv.includes("--full-doorsteps") || process.env.DOORSTEPS_FULL === "1",
+    log: (m) => console.log(m), warn: (m) => console.warn(m),
+  });
+  console.log(`doorstep: ${stats.inBulk} of ${stats.residents} read in bulk (/doorsteps), the rest one by one`);
   for (const gone of ownDir(DOORSTEP_DIR, doorstepWanted)) console.log(`removed stray doorstep: ${gone}`);
-  console.log(`doorstep: ${town.residents.length} residents → ${dWrote} written, ${dKept} unchanged, ${dStale} kept stale (office unreachable)`);
-  if (dStale) {
-    console.warn(`WARN doorstep: ${dStale} of ${town.residents.length} doorsteps could not be refreshed from ${POSTMARK_API} and keep their previous answer — each file's own site.doorstep_fetched_at says how old it is`);
+  console.log(`doorstep: ${town.residents.length} residents → ${stats.wrote} written, ${stats.kept} unchanged, ${stats.stale} kept stale (office unreachable)`);
+  if (stats.stale) {
+    console.warn(`WARN doorstep: ${stats.stale} of ${town.residents.length} doorsteps could not be refreshed from ${POSTMARK_API} and keep their previous answer — each file's own site.doorstep_fetched_at says how old it is`);
   }
 
   // the endpoint manifest — what a machine reader finds at data/ (public
