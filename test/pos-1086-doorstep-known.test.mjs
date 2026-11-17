@@ -36,31 +36,46 @@ const STATIC = fixture("doorstep-static-wright.json");
 const canonical = (v) => Array.isArray(v) ? `[${v.map(canonical).join(",")}]`
   : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`
   : JSON.stringify(v);
-function revOf(d) {
+// the town-wide blocks (office GLOBAL-BLOCKS): the same for every resident, out of the rev, handed back once in global.town_wide
+const WIDE = ["copy", "next_crossing", "bulletin", "town_pulse", "psa", "town"];
+function revOf(d, { legacy = false } = {}) {
   const b = JSON.parse(JSON.stringify(d)); delete b.rev; delete b.as_of;
-  delete b.copy.newest_change_at; delete b.copy.sentence;
+  const present = WIDE.filter((k) => k in b);
+  if (!legacy) for (const k of WIDE) delete b[k];
+  else { delete b.copy.newest_change_at; delete b.copy.sentence; }
   delete b.window.freshness.settled_as_of; delete b.pending_outbox_freshness.settled_as_of;
-  return createHash("sha256").update(canonical(b)).digest("hex").slice(0, 16);
+  return createHash("sha256").update(canonical(legacy ? b : { rest: b, present })).digest("hex").slice(0, 16);
 }
 
 function fakeTown(n) {
   const handles = Array.from({ length: n }, (_, i) => `r${String(i).padStart(2, "0")}`);
-  return { asOf: "a".repeat(40), newest: "2026-11-17T15:00:00.000Z", content: new Map(handles.map((h) => [h, 0])), handles };
+  return { asOf: "a".repeat(40), newest: "2026-11-17T15:00:00.000Z", wide: 0, content: new Map(handles.map((h) => [h, 0])), handles };
 }
-function doorstepOf(t, h) {
+function doorstepOf(t, h, opts = {}) {
   const d = structuredClone(OFFICE);
   d.handle = h;
   d.as_of = t.asOf;
-  d.copy = { newest_change_at: t.newest, crossing: { crossing: 317 }, caught_up: true, sentence: `This page reads the office's copy at commit ${t.asOf.slice(0, 12)}; newest ${t.newest}.` };
+  d.copy = { newest_change_at: t.newest, crossing: { crossing: 317 }, last_crossing_by_timetable: 317 + t.wide, caught_up: true, sentence: `This page reads the office's copy at commit ${t.asOf.slice(0, 12)}; newest ${t.newest}.` };
+  // a letter anywhere in the town (t.wide) moves every resident's town-wide blocks and nobody's own page
+  d.next_crossing = { crossing: 318 + t.wide, at: "2026-11-18T00:00:00.000Z", sentence: `crossing ${318 + t.wide} sails.` };
+  d.town = { ...d.town, deliveries: d.town.deliveries + t.wide };
+  d.bulletin = { ...d.bulletin, total: d.bulletin.total + t.wide };
+  d.town_pulse = { ...d.town_pulse, active_threads: (d.town_pulse.active_threads ?? 0) + t.wide };
+  d.psa = { ...d.psa, window_days: 7 + t.wide };
   d.window.freshness.settled_as_of = t.asOf;
   d.pending_outbox_freshness.settled_as_of = t.asOf;
   d.mail = { ...d.mail, letters_seen: t.content.get(h) };
-  d.rev = revOf(d);
+  d.rev = revOf(d, opts);
   return d;
 }
-const globalOf = (t) => { const d = doorstepOf(t, t.handles[0]); return { as_of: d.as_of, copy: { newest_change_at: d.copy.newest_change_at, sentence: d.copy.sentence }, window_settled_as_of: t.asOf, outbox_settled_as_of: t.asOf }; };
+const globalOf = (t, opts = {}) => {
+  const d = doorstepOf(t, t.handles[0]);
+  const g = { as_of: d.as_of, copy: { newest_change_at: d.copy.newest_change_at, sentence: d.copy.sentence }, window_settled_as_of: t.asOf, outbox_settled_as_of: t.asOf };
+  return opts.legacy ? g : { ...g, version: 2, town_wide: Object.fromEntries(WIDE.filter((k) => k in d).map((k) => [k, d[k]])) };
+};
 
-function fakeOffice(t, { bulk = true, knownAware = true } = {}) {
+// `legacy`: the office as released in w47.12, before the blocks: no `global=2`, a rev of the page less the five leaves, a global of the five.
+function fakeOffice(t, { bulk = true, knownAware = true, legacy = false } = {}) {
   const log = { requests: [], whole: [] };
   const res = (status, body) => ({ ok: status === 200, status, json: async () => JSON.parse(JSON.stringify(body)) });
   const fetchImpl = async (url) => {
@@ -71,15 +86,16 @@ function fakeOffice(t, { bulk = true, knownAware = true } = {}) {
       const handles = p.get("handles").split(",");
       const known = new Map((p.get("known") ?? "").split(",").filter(Boolean).map((e) => e.split(":")));
       const rows = handles.map((h) => {
-        const d = doorstepOf(t, h);
-        if (knownAware && known.get(h) === d.rev) return { handle: h, unchanged: true, rev: d.rev };
+        const d = doorstepOf(t, h, { legacy });
+        // the new office answers `unchanged` only to a caller that sent `global=2`; the w47.12 office never heard of it
+        if (knownAware && (legacy || p.get("global") === "2") && known.get(h) === d.rev) return { handle: h, unchanged: true, rev: d.rev };
         log.whole.push(h);
         return { handle: h, doorstep: d };
       });
-      return res(200, rows.some((r) => r.unchanged) ? { doorsteps: rows, global: globalOf(t) } : { doorsteps: rows });
+      return res(200, rows.some((r) => r.unchanged) ? { doorsteps: rows, global: globalOf(t, { legacy }) } : { doorsteps: rows });
     }
     const one = /^\/doorstep\/(.+)$/.exec(u.pathname);
-    if (one) { log.whole.push(one[1]); return res(200, doorstepOf(t, one[1])); }
+    if (one) { log.whole.push(one[1]); return res(200, doorstepOf(t, one[1], { legacy })); }
     return res(404, {});
   };
   return { fetchImpl, log };
@@ -178,6 +194,78 @@ test("a move of the office's copy of the record alone: every doorstep carried ov
   await pass(t, full, null);
   assert.deepEqual(normalised(dir), normalised(full));
   rmSync(dir, { recursive: true, force: true }); rmSync(full, { recursive: true, force: true });
+});
+
+// ── GLOBAL-BLOCKS: the town-wide blocks ride `global`, and a carried file is patched with them ────────────────────────────────
+
+test("GLOBAL-BLOCKS: a letter anywhere moves the town-wide blocks only: every doorstep carried over, the blocks patched, equal to a full fetch", async () => {
+  // FLIP: delete the `for (const k of TOWN_WIDE_BLOCKS)` patch loop in patchGlobal (tools/lib/doorstep-refresh.mjs) and the
+  // files keep the OLD blocks: this goes red on the first assertion about r00's town.deliveries, and on the full-fetch equality.
+  const dir = scratch(), t = fakeTown(30);
+  const a = await pass(t, dir, null);
+  t.wide = 1; // one letter lands somewhere in the town: no resident's own page moves
+  const b = await pass(t, dir, a.state);
+  assert.deepEqual(b.log.whole, [], "the town-wide blocks are not in the rev, so nothing is fetched");
+  assert.equal(b.stats.carried, 30);
+  assert.ok(b.log.requests.every((r) => r.includes("&global=2")), "every claim says it can patch the blocks");
+  const f = JSON.parse(readFileSync(join(dir, "r00.json"), "utf8"));
+  assert.equal(f.town.deliveries, OFFICE.town.deliveries + 1, "town patched from global");
+  assert.equal(f.bulletin.total, OFFICE.bulletin.total + 1, "bulletin patched");
+  assert.equal(f.next_crossing.crossing, 319, "next_crossing patched, a block the carried copy held");
+  assert.equal(f.copy.last_crossing_by_timetable, 318, "the whole copy block, not only its two leaves");
+  assert.equal(f.psa.window_days, 8);
+  assert.equal(f.town_pulse.active_threads, (OFFICE.town_pulse.active_threads ?? 0) + 1);
+  const full = scratch();
+  await pass(t, full, null);
+  assert.deepEqual(normalised(dir), normalised(full), "byte for byte a full fetch's files, `doorstep_fetched_at` aside");
+  assert.deepEqual(Object.keys(f), Object.keys(JSON.parse(readFileSync(join(full, "r00.json"), "utf8"))), "same key order");
+  rmSync(dir, { recursive: true, force: true }); rmSync(full, { recursive: true, force: true });
+});
+
+test("GLOBAL-BLOCKS: a letter to one resident while the town moved: that one is fetched, the rest carried and patched, all equal to a full fetch", async () => {
+  const dir = scratch(), t = fakeTown(40);
+  const a = await pass(t, dir, null);
+  t.wide = 2; t.content.set("r11", 1);
+  const b = await pass(t, dir, a.state);
+  assert.deepEqual(b.log.whole, ["r11"]);
+  assert.equal(b.stats.carried, 39);
+  const full = scratch();
+  await pass(t, full, null);
+  assert.deepEqual(normalised(dir), normalised(full));
+  rmSync(dir, { recursive: true, force: true }); rmSync(full, { recursive: true, force: true });
+});
+
+test("GLOBAL-BLOCKS: an old office (w47.12: no global=2, a global of five leaves) is never trusted: the chunk is asked again without known and read whole", async () => {
+  // FLIP: drop the `patchable` test in readDoorsteps (tools/lib/doorstep-reads.mjs) and the old office's unchanged rows are
+  // believed with no blocks beside them: the carried files keep stale blocks, and this goes red on the whole-body and equality asserts.
+  const dir = scratch(), t = fakeTown(30);
+  const a = await pass(t, dir, null, { office: { legacy: true } });
+  // a quiet town: the old office's rev (five leaves out only) still matches, so it answers `unchanged`, with five leaves and no blocks
+  const b = await pass(t, dir, a.state, { office: { legacy: true } });
+  assert.equal(b.stats.carried, 0, "nothing is carried over from an office that cannot hand the blocks back");
+  assert.equal(b.log.whole.length, 30, "every body read whole");
+  assert.equal(b.log.requests.length, 4, "two chunks, each asked with known, then once more without: bulk reads, not 30 single ones");
+  assert.ok(b.log.requests.every((r) => r.startsWith("/doorsteps?")), "no single read");
+  const full = scratch();
+  await pass(t, full, null, { office: { legacy: true } });
+  assert.deepEqual(normalised(dir), normalised(full), "today's files");
+  rmSync(dir, { recursive: true, force: true }); rmSync(full, { recursive: true, force: true });
+});
+
+test("GLOBAL-BLOCKS: patchGlobal refuses a global of another version, one without town_wide, and a block set that does not match the carried copy", () => {
+  const t = fakeTown(1);
+  const at = doorstepOf(t, "r00");
+  const g = globalOf(t);
+  assert.ok(patchGlobal(at, g), "the real one patches");
+  assert.equal(patchGlobal(at, { ...g, version: 1 }), null, "another version");
+  assert.equal(patchGlobal(at, { ...g, version: 3 }), null, "another version");
+  const { town_wide: _w, ...bare } = g;
+  assert.equal(patchGlobal(at, bare), null, "no blocks");
+  assert.equal(patchGlobal(at, globalOf(t, { legacy: true })), null, "the old office's five leaves");
+  const { psa: _p, ...fewer } = g.town_wide;
+  assert.equal(patchGlobal(at, { ...g, town_wide: fewer }), null, "a block the carried copy holds, missing from global");
+  const { psa: _q, ...atWithoutPsa } = at;
+  assert.equal(patchGlobal(atWithoutPsa, g), null, "a block global holds, missing from the carried copy");
 });
 
 test("the site's own rows are composed again for a carried-over resident: a changed site row reaches every file", async () => {
