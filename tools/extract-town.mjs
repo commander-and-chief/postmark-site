@@ -43,7 +43,7 @@ import {
   excerptOf, ferryHeadline, stakePositions, splitArrivals, isBounceNotice,
   composeDoorstep, renderDoorstepMarkdown, DOORSTEP_SITE_KEYS,
 } from "./lib/doorstep.mjs";
-import { refreshDoorsteps, loadState, builderFingerprint } from "./lib/doorstep-refresh.mjs";
+import { refreshDoorsteps, builderFingerprint } from "./lib/doorstep-refresh.mjs";
 import {
   QUOTED_IMAGE_REF_RE, ATTR_REF_RE, githubUrl, byteMirror,
   findLeftoverImageRef, findRelativeRef, writeIfChanged, injectBaseTarget,
@@ -675,17 +675,19 @@ emit("stats.json", {
   };
 
   // the state the incremental pass reads: each handle's last rev (from the bulk read only), and the builder it was written by
-  const DOORSTEP_STATE = join(DATA_DIR, "doorstep-state.json");
+  // plus each resident's last office part. They live OUTSIDE the tree when DOORSTEP_STATE_DIR names a directory: the box's
+  // site-refresh.sh checks the tree out with -f and cleans it before every pass, so nothing inside it survives (POS-1086).
+  // Unset, it is src/data/postmark/doorstep-state/, for a local run.
+  const DOORSTEP_STATE_DIR = process.env.DOORSTEP_STATE_DIR ? resolve(process.env.DOORSTEP_STATE_DIR) : join(DATA_DIR, "doorstep-state");
   const builder = builderFingerprint([
     fileURLToPath(import.meta.url), join(HERE, "lib", "doorstep.mjs"), join(HERE, "lib", "doorstep-reads.mjs"),
-    join(HERE, "lib", "doorstep-refresh.mjs"), join(SITE_ROOT, "src", "lib", "mail.mjs"),
+    join(HERE, "lib", "doorstep-refresh.mjs"), join(HERE, "lib", "ids.mjs"), join(SITE_ROOT, "src", "lib", "mail.mjs"),
   ]);
-  const { revs, stats } = await refreshDoorsteps(town.residents.map((r) => r.handle), {
-    apiBase: POSTMARK_API, dir: DOORSTEP_DIR, state: loadState(DOORSTEP_STATE), builder, build,
+  const { stats } = await refreshDoorsteps(town.residents.map((r) => r.handle), {
+    apiBase: POSTMARK_API, dir: DOORSTEP_DIR, stateDir: DOORSTEP_STATE_DIR, builder, build,
     full: process.argv.includes("--full-doorsteps") || process.env.DOORSTEPS_FULL === "1",
     log: (m) => console.log(m), warn: (m) => console.warn(m),
   });
-  writeIfChanged(DOORSTEP_STATE, JSON.stringify({ builder, revs: Object.fromEntries(Object.entries(revs).sort(([a], [b]) => a.localeCompare(b))) }, null, 1) + "\n");
   console.log(`doorstep: ${stats.inBulk} of ${stats.residents} read in bulk (/doorsteps), the rest one by one`);
   for (const gone of ownDir(DOORSTEP_DIR, doorstepWanted)) console.log(`removed stray doorstep: ${gone}`);
   console.log(`doorstep: ${town.residents.length} residents → ${stats.wrote} written, ${stats.kept} unchanged, ${stats.stale} kept stale (office unreachable)`);

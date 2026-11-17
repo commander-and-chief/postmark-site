@@ -19,15 +19,25 @@
 // this pass's inputs, by the same `build` a full pass uses. So a carried-over
 // file is exactly what a full fetch of the same inputs would write.
 //
+// WHERE IT IS KEPT: OUTSIDE THE TREE. The box's site-refresh.sh runs
+// `checkout -qf -B refresh-main` and `clean -qfd -e node_modules` on the extract
+// tree before every pass: an untracked file there is gone, and the doorstep files
+// the checkout restores are main's committed ones, which carry no current `rev`.
+// So the state (`state.json`: the builder fingerprint and each handle's rev) and
+// each resident's last office part (`<handle>.office.json`: `{ fetched_at, office }`)
+// live in `stateDir`, a directory the caller takes from DOORSTEP_STATE_DIR. A
+// carried-over file is built from that kept copy and never from the tree's files.
+//
 // THE STAMP. `site.doorstep_fetched_at` is when the office last answered for that
 // handle. A carried-over file whose bytes do not move keeps its stamp and is not
-// written; one whose bytes move (a patched leaf, a site-side row) takes the moment
-// the office said "unchanged", which is a true answer-time for it.
+// written; one whose bytes move (a patched leaf, a site-side row, a tree whose
+// files were put back) takes the moment the office said "unchanged", which is a
+// true answer-time for it.
 //
 // A FULL PASS comes when asked (`--full-doorsteps`, or DOORSTEPS_FULL=1), when there
 // is no state, when the state names another builder (the first run after a deploy
-// of any of the files this phase is made of), and for any handle with no usable
-// previous file or rev. Revs are kept only from the bulk read.
+// of any of the files this phase is made of), and for any handle whose kept copy
+// is missing or is not the answer its rev names. Revs are kept only from the bulk read.
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -45,13 +55,17 @@ export function builderFingerprint(paths) {
   return h.digest("hex").slice(0, 16);
 }
 
-/** The state file: `{ builder, revs: { handle: rev } }`, or null when absent or unreadable. */
-export function loadState(path) {
-  try {
-    const s = JSON.parse(readFileSync(path, "utf8"));
-    return s && typeof s.builder === "string" && s.revs && typeof s.revs === "object" ? s : null;
-  } catch { return null; }
+const readJson = (p) => { try { return JSON.parse(readFileSync(p, "utf8")); } catch { return null; } };
+const readText = (p) => (existsSync(p) ? readFileSync(p, "utf8") : null);
+
+/** The state file in `stateDir`: `{ builder, revs: { handle: rev } }`, or null when absent or unreadable. */
+export function loadState(stateDir) {
+  const s = readJson(join(stateDir, "state.json"));
+  return s && typeof s.builder === "string" && s.revs && typeof s.revs === "object" ? s : null;
 }
+
+/** One resident's kept office part: `{ fetched_at, office }`, or null. */
+export const keptPath = (stateDir, handle) => join(stateDir, `${handle}.office.json`);
 
 /** The office's part of a composed doorstep: every key the site did not add, in the office's order. */
 export function officeBodyOf(bundle) {
@@ -83,33 +97,32 @@ export function patchGlobal(office, global) {
   return out;
 }
 
-const readJson = (p) => { try { return JSON.parse(readFileSync(p, "utf8")); } catch { return null; } };
-const readText = (p) => (existsSync(p) ? readFileSync(p, "utf8") : null);
-
 /**
  * One pass over every doorstep. `build(handle, office, fetchedAt)` is the site's composition: `{ json, md }` texts.
- * Returns `{ revs, stats }`: the state to save (revs from the bulk read only) and the counts.
- * Nothing here writes outside `dir`; the caller saves `{ builder, revs }`.
+ * `stateDir` holds the state and the kept office parts (see the head of this file); it is read and written here,
+ * and it is the only place besides `dir` this writes. Returns `{ revs, stats }`.
  */
-export async function refreshDoorsteps(handles, { apiBase, dir, state = null, builder, full = false, build, fetchImpl = fetch, now, log = () => {}, warn = () => {} }) {
-  const prevs = new Map();
+export async function refreshDoorsteps(handles, { apiBase, dir, stateDir, builder, full = false, build, fetchImpl = fetch, now, log = () => {}, warn = () => {} }) {
+  const state = loadState(stateDir);
+  const kept = new Map(); // handle -> { fetched_at, office }, only for a copy the state's rev names
   const known = new Map();
   const mode = full ? "full pass asked for" : !state ? "no state" : state.builder !== builder ? "a deploy changed the builder" : "incremental";
   if (mode === "incremental") {
     for (const h of handles) {
       const rev = state.revs[h];
-      const prev = REV_RE.test(rev ?? "") ? readJson(join(dir, `${h}.json`)) : null;
-      // the file on disk must be the answer the rev names: the office's own `rev` key rides in it
-      if (prev && prev.rev === rev) { prevs.set(h, prev); known.set(h, rev); }
+      const copy = REV_RE.test(rev ?? "") ? readJson(keptPath(stateDir, h)) : null;
+      // the kept copy must be the answer the rev names: the office's own `rev` key rides in it
+      if (copy?.office && copy.office.rev === rev) { kept.set(h, copy); known.set(h, rev); }
     }
   }
   const { doorsteps, inBulk, bulkBodies } = await readDoorsteps(handles, { apiBase, fetchImpl, now, known: known.size ? known : null });
   const revs = {};
   const stats = { mode, residents: handles.length, asked_known: known.size, carried: 0, fetched: 0, wrote: 0, kept: 0, stale: 0, inBulk };
+  const keep = (handle, fetchedAt, office) => writeIfChanged(keptPath(stateDir, handle), JSON.stringify({ fetched_at: fetchedAt, office }) + "\n");
   for (const handle of handles) {
     let row = doorsteps.get(handle);
     if (row.error) {
-      // the previous files stay, and so does their rev: they are still the answer it names
+      // the previous files stay, and so does their rev: the kept copy is still the answer it names
       if (known.has(handle)) revs[handle] = known.get(handle);
       stats.stale++;
       warn(`WARN doorstep: ${handle} — office unreachable (${row.error}); previous file kept, its own stamp discloses its age`);
@@ -118,29 +131,33 @@ export async function refreshDoorsteps(handles, { apiBase, dir, state = null, bu
     const jsonPath = join(dir, `${handle}.json`), mdPath = join(dir, `${handle}.md`);
     let office = null, fetchedAt = row.fetchedAt, carried = false;
     if (row.unchanged) {
-      office = patchGlobal(officeBodyOf(prevs.get(handle)), row.global);
+      office = patchGlobal(kept.get(handle).office, row.global);
       if (office) carried = true;
       else {
-        // the previous body can't take the leaves it was handed: read this one whole
+        // the kept body can't take the leaves it was handed: read this one whole
         try { row = await readDoorstep(handle, { apiBase, fetchImpl, now }); office = row.body; fetchedAt = row.fetchedAt; }
         catch (e) { stats.stale++; if (known.has(handle)) revs[handle] = known.get(handle); warn(`WARN doorstep: ${handle} — office unreachable (${e.message}); previous file kept, its own stamp discloses its age`); continue; }
       }
     } else office = row.body;
 
-    let files = null;
     if (carried) {
       // the stamp it already had: if nothing else moved, nothing is written
-      const held = build(handle, office, prevs.get(handle).site?.doorstep_fetched_at ?? fetchedAt);
-      if (held.json === readText(jsonPath) && held.md === readText(mdPath)) { stats.kept += 2; stats.carried++; revs[handle] = row.rev; continue; }
+      const held = build(handle, office, kept.get(handle).fetched_at ?? fetchedAt);
+      if (held.json === readText(jsonPath) && held.md === readText(mdPath)) {
+        stats.kept += 2; stats.carried++; revs[handle] = row.rev;
+        keep(handle, kept.get(handle).fetched_at ?? fetchedAt, office);
+        continue;
+      }
     }
-    files = build(handle, office, fetchedAt);
+    const files = build(handle, office, fetchedAt);
     for (const [path, text] of [[jsonPath, files.json], [mdPath, files.md]]) writeIfChanged(path, text) === "wrote" ? stats.wrote++ : stats.kept++;
-    if (carried) { stats.carried++; revs[handle] = row.rev; }
+    if (carried) { stats.carried++; revs[handle] = row.rev; keep(handle, fetchedAt, office); }
     else {
       stats.fetched++;
-      if (bulkBodies.has(handle) && REV_RE.test(office.rev ?? "")) revs[handle] = office.rev;
+      if (bulkBodies.has(handle) && REV_RE.test(office.rev ?? "")) { revs[handle] = office.rev; keep(handle, fetchedAt, office); }
     }
   }
+  writeIfChanged(join(stateDir, "state.json"), JSON.stringify({ builder, revs: Object.fromEntries(Object.entries(revs).sort(([a], [b]) => a.localeCompare(b))) }, null, 1) + "\n");
   log(`doorstep: ${stats.mode}: ${stats.carried} carried over, ${stats.fetched} fetched whole, ${stats.stale} kept stale; ${stats.wrote} files written, ${stats.kept} unchanged`);
   return { revs, stats, doorsteps, bulkBodies };
 }
