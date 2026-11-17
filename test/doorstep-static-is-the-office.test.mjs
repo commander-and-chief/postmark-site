@@ -392,8 +392,12 @@ test("THE HOIST: the clock is read once per office answer, never once per run", 
   // the hoisted clock is gone, and cannot come back under its old name
   assert.equal(/const builtAt\s*=\s*new Date\(\)/.test(src), false,
     "a single run-start timestamp stamped on every file is the defect itself");
-  assert.equal(/new Date\(\)/.test(src.slice(src.indexOf("refreshDoorsteps("), src.indexOf("doorstep_fetched_at: fetchedAt,") + 1)), false,
-    "no clock between the reads and the stamp: the stamp is the answer's, not the loop's");
+  // (POS-1086: the span is the composition, from `const build = ` to the stamp; the reads moved to the refresh lib, checked below)
+  const spanFrom = src.indexOf("const build = (handle, office, fetchedAt) => {");
+  const span = src.slice(spanFrom, src.indexOf("doorstep_fetched_at: fetchedAt,"));
+  assert.ok(spanFrom > 0 && span.length > 1000, "the span between the composition's start and the stamp is not empty (a pin over nothing passes for any code)");
+  assert.equal(/new Date\(/.test(span), false,
+    "no clock between the composition's start and the stamp: the stamp is the answer's, not the loop's");
 
   // and the stamp is written inside the per-resident composition, which the refresh calls once per resident (POS-1086:
   // the per-resident loop moved to tools/lib/doorstep-refresh.mjs, and `build` is what it calls)

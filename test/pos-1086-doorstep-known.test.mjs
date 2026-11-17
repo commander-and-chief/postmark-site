@@ -101,11 +101,14 @@ const snapshot = (dir) => Object.fromEntries(readdirSync(dir).sort().map((f) => 
 const normalised = (dir) => Object.fromEntries(Object.entries(snapshot(dir)).map(([f, s]) => [f, stamp(s)]));
 
 let clock = 0;
-const pass = async (t, dir, state, { site = { note: "n", crossing: 317 }, full = false, office = {}, builderId = "b1" } = {}) => {
+// The state lives OUTSIDE the output directory, as on the box: `<dir>-state`, unless a test names another. The third
+// argument is vestigial (the state used to be handed from pass to pass); the state is the directory.
+const stateDirOf = (dir) => `${dir}-state`;
+const pass = async (t, dir, _vestigial, { site = { note: "n", crossing: 317 }, full = false, office = {}, builderId = "b1", stateDir = stateDirOf(dir) } = {}) => {
   const o = fakeOffice(t, office);
   const nowIso = () => `2026-11-17T15:${String(10 + clock++).padStart(2, "0")}:00.000Z`;
-  const r = await refreshDoorsteps(t.handles, { apiBase: "https://office.test", dir, state, builder: builderId, full, build: builder(site), fetchImpl: o.fetchImpl, now: nowIso });
-  return { ...r, log: o.log, state: { builder: builderId, revs: r.revs } };
+  const r = await refreshDoorsteps(t.handles, { apiBase: "https://office.test", dir, stateDir, builder: builderId, full, build: builder(site), fetchImpl: o.fetchImpl, now: nowIso });
+  return { ...r, log: o.log };
 };
 
 test("a first pass with no state reads every doorstep whole and keeps each bulk rev", async () => {
@@ -203,14 +206,48 @@ test("ACCEPTANCE: a full pass is still available: asked for, with no state, afte
   const deployed = await pass(t, dir, a.state, { builderId: "b2" });
   assert.equal(deployed.stats.mode, "a deploy changed the builder");
   assert.equal(deployed.log.whole.length, 30, "the first run after a deploy reads everything");
-  // a file on disk that is not the answer the state's rev names is read whole, alone
-  const b = await pass(t, dir, deployed.state, { builderId: "b2" });
+  // a kept copy that is not the answer the state's rev names is read whole, alone
+  const b = await pass(t, dir, null, { builderId: "b2" });
   assert.deepEqual(b.log.whole, [], "the pass after that deploy is incremental again");
-  const bad = JSON.parse(readFileSync(join(dir, "r03.json"), "utf8")); bad.rev = "0".repeat(16);
-  writeFileSync(join(dir, "r03.json"), JSON.stringify(bad));
-  const c = await pass(t, dir, b.state, { builderId: "b2" });
+  const keptFile = join(stateDirOf(dir), "r03.office.json");
+  const bad = JSON.parse(readFileSync(keptFile, "utf8")); bad.office.rev = "0".repeat(16);
+  writeFileSync(keptFile, JSON.stringify(bad));
+  const c = await pass(t, dir, null, { builderId: "b2" });
   assert.deepEqual(c.log.whole, ["r03"]);
+  // and a handle with no kept copy at all
+  writeFileSync(keptFile, "not json");
+  assert.deepEqual((await pass(t, dir, null, { builderId: "b2" })).log.whole, ["r03"]);
   rmSync(dir, { recursive: true, force: true });
+});
+
+test("ACCEPTANCE (the box): the tree is checked out with -f and cleaned between passes, and the next pass still carries over", async () => {
+  // site-refresh.sh runs `checkout -qf -B refresh-main` and `clean -qfd -e node_modules` on the extract tree before every
+  // pass: whatever the pass left in the tree is gone, and the doorstep files come back as main's committed ones, which
+  // carry no current rev. The state is kept in a directory outside the tree (DOORSTEP_STATE_DIR), so it is untouched.
+  const t = fakeTown(40), stateDir = scratch();
+  const tree1 = scratch();
+  const a = await pass(t, tree1, null, { stateDir });
+  assert.equal(a.stats.fetched, 40);
+  // the wipe: a fresh tree whose doorstep files are main's committed ones (old, no rev), for some residents only
+  const tree2 = scratch();
+  const committed = (h) => JSON.stringify({ ...composeDoorstep(OFFICE, Object.fromEntries(DOORSTEP_SITE_KEYS.map((k) => [k, STATIC[k]]))), handle: h }, null, 1) + "\n";
+  for (const h of t.handles.slice(0, 25)) writeFileSync(join(tree2, `${h}.json`), committed(h));
+  t.content.set("r07", 1); // one letter lands between the passes
+  const b = await pass(t, tree2, null, { stateDir });
+  assert.equal(b.stats.mode, "incremental");
+  assert.deepEqual(b.log.whole, ["r07"], "one body from the office although the tree was wiped");
+  assert.equal(b.stats.carried, 39);
+  assert.equal(readdirSync(tree2).filter((f) => f.endsWith(".md")).length, 40, "every file is written into the wiped tree");
+  const full = scratch();
+  await pass(t, full, null);
+  assert.deepEqual(normalised(tree2), normalised(full), "and equals a full fetch of the same inputs, `doorstep_fetched_at` aside");
+  // the control: with the state INSIDE the wiped tree (the first design), the second pass has nothing to carry
+  const inTree1 = scratch(), inTree2 = scratch();
+  await pass(t, inTree1, null, { stateDir: join(inTree1, "state") });
+  const lost = await pass(t, inTree2, null, { stateDir: join(inTree2, "state") });
+  assert.equal(lost.stats.mode, "no state");
+  assert.equal(lost.log.whole.length, 40, "state kept in the tree is gone with the tree: every pass is full");
+  for (const d of [tree1, tree2, full, inTree1, inTree2]) rmSync(d, { recursive: true, force: true });
 });
 
 test("revs are kept only from the bulk read: an office with no bulk door leaves none, and the next pass is whole", async () => {
@@ -282,11 +319,11 @@ test("builderFingerprint moves with any file's bytes, and loadState refuses what
   assert.equal(builderFingerprint([a, b]), f1);
   writeFileSync(b, "3");
   assert.notEqual(builderFingerprint([a, b]), f1);
-  assert.equal(loadState(join(dir, "missing.json")), null);
-  writeFileSync(join(dir, "bad.json"), "{");
-  assert.equal(loadState(join(dir, "bad.json")), null);
-  writeFileSync(join(dir, "ok.json"), JSON.stringify({ builder: "x", revs: { a: "b" } }));
-  assert.deepEqual(loadState(join(dir, "ok.json")), { builder: "x", revs: { a: "b" } });
+  assert.equal(loadState(join(dir, "missing")), null);
+  mkdirSync(join(dir, "bad")); writeFileSync(join(dir, "bad", "state.json"), "{");
+  assert.equal(loadState(join(dir, "bad")), null);
+  mkdirSync(join(dir, "ok")); writeFileSync(join(dir, "ok", "state.json"), JSON.stringify({ builder: "x", revs: { a: "b" } }));
+  assert.deepEqual(loadState(join(dir, "ok")), { builder: "x", revs: { a: "b" } });
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -298,6 +335,8 @@ test("WIRING (text pin): the extractor's doorstep phase is refreshDoorsteps, wit
   assert.match(src, /--full-doorsteps/);
   assert.match(src, /DOORSTEPS_FULL/);
   assert.match(src, /builderFingerprint\(/);
-  assert.match(src, /doorstep-state\.json/);
+  assert.match(src, /process\.env\.DOORSTEP_STATE_DIR/);
+  assert.match(src, /stateDir: DOORSTEP_STATE_DIR/);
+  assert.match(src, /join\(HERE, "lib", "ids\.mjs"\)/, "the fingerprint covers ids.mjs, which the composition imports");
   assert.equal(/\breadDoorsteps\(/.test(src), false, "the phase no longer reads the office by itself");
 });
