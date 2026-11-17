@@ -43,10 +43,13 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DOORSTEP_SITE_KEYS } from "./doorstep.mjs";
-import { readDoorsteps, readDoorstep } from "./doorstep-reads.mjs";
+import { readDoorsteps, readDoorstep, GLOBAL_VERSION } from "./doorstep-reads.mjs";
 import { writeIfChanged } from "./mirror.mjs";
 
 export const REV_RE = /^[0-9a-f]{16}$/;
+
+/** The top-level keys of the office's doorstep that are the same for every resident (office src/doorstep-rev.mjs § TOWN_WIDE_BLOCKS), patched from `global.town_wide`. */
+export const TOWN_WIDE_BLOCKS = Object.freeze(["copy", "next_crossing", "bulletin", "town_pulse", "psa", "town"]);
 
 /** A short fingerprint of the files this phase is made of; another value means a deploy changed them. */
 export function builderFingerprint(paths) {
@@ -93,6 +96,16 @@ export function patchGlobal(office, global) {
   if (out.pending_outbox_freshness && typeof out.pending_outbox_freshness === "object" && "settled_as_of" in out.pending_outbox_freshness) {
     out.pending_outbox_freshness = { ...out.pending_outbox_freshness };
     if (!set(out.pending_outbox_freshness, "settled_as_of", global?.outbox_settled_as_of)) return null;
+  }
+  // The town-wide blocks (office GLOBAL-BLOCKS): the same for every resident, so the office hands each back once in
+  // `global.town_wide` and they are left out of the rev. Each replaces the carried copy's own, in the key's place, so
+  // the file is what a full fetch writes. A global at another version, or one that holds a block the carried copy lacks
+  // (or lacks one it holds), is not patched at all: null, and the caller reads that handle whole.
+  const wide = global?.version === GLOBAL_VERSION && global.town_wide && typeof global.town_wide === "object" ? global.town_wide : null;
+  if (!wide) return null;
+  for (const k of TOWN_WIDE_BLOCKS) {
+    if ((k in out) !== (k in wide)) return null;
+    if (k in out) out[k] = wide[k];
   }
   return out;
 }
