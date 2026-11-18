@@ -122,14 +122,16 @@ const big = !!pic && !link;
   .spark-card.is-image-card { display: block; padding: 0; overflow: hidden; }
   .spark-card.is-image-card .spark-pic { margin: 0; }
   .spark-card.is-image-card .spark-pic img { width: 100%; height: auto; border: 0; border-radius: 0; }
-  .spark-card.is-image-card .spark-cap { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.1em 0.6em; padding: 0.45em 0.8em 0.55em; }
-  .spark-card.is-image-card .spark-head { margin: 0; font-size: 0.92rem; font-weight: 700; line-height: 1.3; }
+  /* ONE visual caption line: the name ellipsises, and the optional maker is the first thing to give way (it shrinks away before the name is cut); the full words are in the detail */
+  .spark-card.is-image-card .spark-cap { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 0.6em; padding: 0.45em 0.8em 0.55em; white-space: nowrap; }
+  .spark-card.is-image-card .spark-head { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; font-size: 0.92rem; font-weight: 700; line-height: 1.3; }
   .spark-card.is-image-card.is-root .spark-head { font-size: 1.05rem; }
-  .spark-card.is-image-card .spark-maker { font-size: 0.8rem; }
+  .spark-card.is-image-card .spark-maker { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: clip; font-size: 0.8rem; }
   /* the detail's own big card: the picture first, as large as the viewport permits and whole (never the listing's thumbnail cap), all the text below at a readable measure */
   .spark-card.is-big, .spark-card.is-big.is-root.has-picture { display: block; padding: 0; overflow: hidden; }
   .spark-card.is-big .spark-pic { margin: 0; text-align: center; background: var(--pm-paper-deep, rgba(0,0,0,0.06)); }
-  .spark-card.is-big .spark-pic img { display: inline-block; width: auto; max-width: 100%; height: auto; max-height: 85vh; object-fit: contain; border: 0; border-radius: 0; }
+  /* width 100% (not auto): a small valid source is ENLARGED to the page's width like the listing's, bounded by the viewport height and kept whole (contain), never left at its natural size */
+  .spark-card.is-big .spark-pic img { display: block; width: 100%; height: auto; max-height: 85vh; object-fit: contain; border: 0; border-radius: 0; }
   .spark-card.is-big .spark-body { max-width: 46rem; padding: 0.9em 1.1em 1em; }
   .spark-card.is-big .spark-head { font-size: 1.4em; }
   @media (max-width: 520px) {

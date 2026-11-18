@@ -563,6 +563,18 @@ test("BUILT: every Spark card, in both event sections, is ONE real link to its c
   assert.match(css, /\.spark-credit a, \.spark-rooms a \{ position: relative; z-index: 2; \}/, "other links sit above the stretched one");
 });
 
+test("image-first CSS contract (pinned from the card's source): the pictured card's caption is ONE visual line, and the bigger view enlarges a small source instead of leaving it at its natural size", () => {
+  const css = readFileSync(join(ROOT, "src/components/SparkCard.astro"), "utf8");
+  const rule = (sel) => { const m = new RegExp(`${sel.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`).exec(css); assert.ok(m, `no rule for ${sel}`); return m[1]; };
+  assert.match(rule(".spark-card.is-image-card .spark-cap"), /flex-wrap:\s*nowrap/); assert.match(rule(".spark-card.is-image-card .spark-cap"), /white-space:\s*nowrap/);
+  assert.match(rule(".spark-card.is-image-card .spark-head"), /text-overflow:\s*ellipsis/); assert.match(rule(".spark-card.is-image-card .spark-head"), /overflow:\s*hidden/);
+  assert.match(rule(".spark-card.is-image-card .spark-maker"), /flex:\s*0 100 auto/, "the optional maker gives way first");
+  const big = rule(".spark-card.is-big .spark-pic img");
+  assert.match(big, /width:\s*100%/, "a small valid source is enlarged to the view's width");
+  assert.doesNotMatch(big, /width:\s*auto/, "the bigger view never leaves a small source at its natural size");
+  assert.match(big, /max-height:\s*85vh/); assert.match(big, /object-fit:\s*contain/, "bounded by the viewport and kept whole");
+});
+
 test("BUILT: a Spark's headline is dark on its cream card (an own colour, never the page's pale heading) and a no-picture Spark still has no empty tile", () => {
   const css = readFileSync(join(ROOT, "src/components/SparkCard.astro"), "utf8");
   assert.match(css, /\.spark-head \{[^}]*color: var\(--pm-ink\)/);
