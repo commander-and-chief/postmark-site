@@ -27,9 +27,9 @@ const counts = Object.fromEntries(SPARK_FILTERS.map((f) => [f.key, entries.filte
 const eventTitle = (entry) => eventOfSpark(entry, calendar, eventsData)?.event?.title ?? null;
 ---
 <PostmarkLayout
-  door={{ get: "/world2/marks?all=true&full=true" }}
+  door={{ get: "/api/world2/marks?all=true&full=true" }}
   title="Sparks — Postmark"
-  description="The moments the town kept: accepted Sparks in the town's public register, from events and from none."
+  description={registerOk ? "The moments the town kept: accepted Sparks in the town's public register, from events and from no event named." : "The moments the town kept: the Sparks the event pages carry (the town's register could not be read just now)."}
   active="sparks"
 >
   <div class="cal-page spk" data-sparks-page>

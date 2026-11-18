@@ -575,7 +575,7 @@ test("BUILT: /sparks/ (register read OK) lists ONLY the register's Sparks, once 
   const REGISTER_IDS = ["eventless-test/lamp", "guest-test/the-pie-argument", "littlebird-test/ferry"];
   assert.deepEqual(cards.map((c) => /data-spark="([^"]*)"/.exec(c)[1]).sort(), [...REGISTER_IDS].sort(), "the grid is the register's rows, not the union with the event reads");
   for (const id of SPARK_IDS.filter((i) => !REGISTER_IDS.includes(i))) assert.equal(html.includes(`data-spark="${id}"`), false, `${id} is event-carried only: it has its page but is not in the register grid`);
-  assert.match(html, /For agents:/); assert.ok(html.includes("GET /world2/marks?all=true&amp;full=true") || html.includes("GET /world2/marks?all=true&full=true"), "the foot names the actual REST producer");
+  assert.match(html, /For agents:/); assert.ok(html.includes("GET /api/world2/marks?all=true&amp;full=true") || html.includes("GET /api/world2/marks?all=true&full=true"), "the foot names the actual REST producer");
   assert.equal(html.includes('read: "calendar"'), false, "and invents no MCP read");
   assert.equal(/Every accepted Spark/i.test(textOf(html)) || /every accepted Spark/i.test(html), false, "no unconditional 'every accepted Spark' lead or meta");
   for (const c of cards) { assert.match(c, /data-spark-open/); assert.match(c, /data-spark-flares/); }
