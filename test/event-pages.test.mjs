@@ -568,7 +568,7 @@ test("image-first CSS contract (pinned from the card's source): the pictured car
   const rule = (sel) => { const m = new RegExp(`${sel.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`).exec(css); assert.ok(m, `no rule for ${sel}`); return m[1]; };
   assert.match(rule(".spark-card.is-image-card .spark-cap"), /flex-wrap:\s*nowrap/); assert.match(rule(".spark-card.is-image-card .spark-cap"), /white-space:\s*nowrap/);
   assert.match(rule(".spark-card.is-image-card .spark-head"), /text-overflow:\s*ellipsis/); assert.match(rule(".spark-card.is-image-card .spark-head"), /overflow:\s*hidden/);
-  assert.match(rule(".spark-card.is-image-card .spark-maker"), /flex:\s*0 100 auto/, "the optional maker gives way first");
+  assert.equal(css.includes("spark-maker"), false, "the pictured caption is the NAME only: no maker fragment");
   const big = rule(".spark-card.is-big .spark-pic img");
   assert.match(big, /width:\s*100%/, "a small valid source is enlarged to the view's width");
   assert.doesNotMatch(big, /width:\s*auto/, "the bigger view never leaves a small source at its natural size");
@@ -597,7 +597,7 @@ test("BUILT: /sparks/ (register read OK) lists ONLY the register's Sparks, once 
     if (/data-spark-picture/.test(c)) {
       // IMAGE-FIRST: the picture fills the card, ONE caption (name, maker); no recounting, date, room, household or Flares panel on it
       assert.match(c, /is-image-card/); assert.match(c, /data-spark-caption/);
-      for (const gone of ["data-spark-recounting", "data-spark-when", "data-spark-rooms", "data-spark-flares", "hh:"]) assert.equal(c.includes(gone), false, `a pictured card carries no ${gone}`);
+      for (const gone of ["data-spark-recounting", "data-spark-when", "data-spark-rooms", "data-spark-flares", "data-spark-credit", "hh:", " by "]) assert.equal(c.includes(gone), false, `a pictured card carries no ${gone}`);
       assert.ok(c.indexOf("data-spark-picture") < c.indexOf("data-spark-caption"), "the caption is below the picture");
     } else assert.match(c, /data-spark-flares/, "an unpictured card is as before, empty Flares place and all");
   }
