@@ -34,7 +34,7 @@ export function getStaticPaths() {
 }
 
 const { from, to, letter = false } = Astro.props;
-const canonical = new URL(to.split("#")[0], Astro.site ?? "https://postmark.town").href;
+const canonical = new URL(to.split("#")[0].split("?")[0],Astro.site ?? "https://postmark.town").href;
 ---
 <!doctype html>
 <html lang="en">
