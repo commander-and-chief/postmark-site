@@ -158,13 +158,16 @@ test("private slots ship hidden and marked private, in the static page and in ev
   assert.match(paint, /if \(!ctx\.owner\) \{ box\.hidden = true; return; \}/, "the mail slot is painted for the house's own sign-in only");
 });
 
-test("the stage reads with the reader's bearer only on residents the sign-in holds, and nowhere else", () => {
+test("the stage reads with the reader's bearer only when the sign-in holds a resident of the house, on the one house read, and nowhere else", () => {
   const stage = read("src/lib/hearth/stage.mjs");
-  // until 2026-11-10 this asserted the call ended at `mine: own }` (the stage awaited the whole read); it carries `onProgress` now (POS-984, test/household-reads-progress.test.mjs)
-  assert.match(stage, /readHouse\(handles, \{\s*token: own\.length \? token\(\) : null, mine: own,\s*onProgress: /);
+  // until 2026-11-10 this asserted the call ended at `mine: own }` (the stage awaited the whole read); it carries `onProgress` now (POS-984, test/household-reads-progress.test.mjs),
+  // and the house's canonical `key` since CORE-113 (the one aggregate read asks by it, never by the display slug)
+  assert.match(stage, /readHouse\(handles, \{\s*key, token: own\.length \? token\(\) : null, mine: own,\s*onProgress: /);
+  assert.match(stage, /const key = root\.dataset\.hearthKey \|\| slug;/, "the key is the registry's, as the saved choice is read and PATCHed under it");
   assert.match(stage, /const mine = \(\) => \(token\(\) \? held\(\)\.filter\(\(h\) => handles\.includes\(h\)\) : \[\]\)/);
   const reads = read("src/lib/household-dashboard/reads.mjs");
-  assert.match(reads, /getJSON\(`\$\{api\}\/doorstep\/\$\{e\(h\)\}`, token && own\.has\(h\) \? token : null\)/);
+  assert.match(reads, /getJSON\(houseUrl\(api, key\), token && mine\.length \? token : null\)/);
+  assert.equal((reads.match(/getJSON\([^)]*token/g) ?? []).length, 1, "the bearer is handed to exactly one read");
   assert.ok(!/authorization|Bearer/i.test(reads.slice(reads.indexOf("export async function readHearthExtras"))), "the Hearth's own extra reads are public and carry no bearer");
 });
 

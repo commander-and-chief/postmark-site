@@ -268,3 +268,17 @@ test("the day's quests at the house's grain", () => {
   assert.deepEqual(q.rows.map((r) => [r.id, r.done, r.target]), [["correspond-send", 3, 5]]);
   assert.equal(q.shareSize, 7);
 });
+
+// CORE-113: both callers of the shared adapter ask the one house read by the house's CANONICAL key, never by the page's display slug.
+test("both callers pass the canonical house key to readHouse (the Hearth stage and the household dashboard)", () => {
+  const dash = read("../src/components/household-dashboard/HouseDashboard.astro");
+  assert.match(dash, /data-hd-key=\{house\.slug \?\? ""\}/, "the dashboard's root carries the registry's key beside its display slug");
+  assert.match(dash, /const houseKey = root\.dataset\.hdKey \|\| slug;/);
+  assert.match(dash, /readHouse\(handles, \{ key: houseKey, token: own\.length \? token\(\) : null, mine: own \}\)/);
+  const stage = read("../src/lib/hearth/stage.mjs");
+  assert.match(stage, /readHouse\(handles, \{\s*key, token:/);
+  assert.match(read("../src/components/hearth/Hearth.astro"), /data-hearth-key=\{house\.slug \?\? ""\}/, "and the Hearth's root still carries it");
+  // the separate keyless Hearth-script bundle is not handed any private dashboard input
+  const reads = read("../src/lib/household-dashboard/reads.mjs");
+  assert.match(reads, /readHearthBundle\(key\)[\s\S]{0,200}getJSON\(bundleUrl\(officeOrigin\(\), key\)\)/, "the bundle read is keyless");
+});
