@@ -247,7 +247,7 @@ test("the Town page's Ballot House shell holds no tally, keeps the door to /vote
   assert.doesNotMatch(panel, /fetch\(|innerHTML/, "the read is the helper's, not inline in the shell");
   const script = page.slice(page.indexOf('import { mountBallotPanel }'));
   // POS-1066 A: the mount is handed the build's Hearth preview map, read back from the panel's own attribute
-  assert.match(script.slice(0, 500), /const host = document\.querySelector\("\[data-ballot-panel\]"\);[\s\S]*mountBallotPanel\(host, \{ previews: readPreviews\(host\?\.getAttribute\("data-hearth-previews"\)\) \}\)/);
+  assert.match(script.slice(0, 900), /const host = document\.querySelector\("\[data-ballot-panel\]"\);[\s\S]*mountBallotPanel\(host, \{ previews: readPreviews\(host\?\.getAttribute\("data-hearth-previews"\)\), titles: readTitles\(host\?\.getAttribute\("data-hearth-titles"\)\) \}\)/);
   assert.ok(!page.includes('addEventListener("hashchange"'), "the page holds no hashchange listener (a founder law: a click's hashchange must not scroll): the helper re-reads on it");
   // the page ships no stake form or sign-in for this panel
   assert.doesNotMatch(read("src/lib/ballot-panel.mjs").replace(/^\s*\/\/.*$/gm, ""), /ballot-stake|mountBallotStake|\bPOST\b|method:|oauth|\btoken\b|\bbody:/i, "the panel's code only reads");

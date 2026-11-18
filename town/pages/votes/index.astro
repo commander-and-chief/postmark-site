@@ -17,6 +17,8 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
 import { paint, tint, SPRITE_W, SPRITE_H } from "@/lib/civic-art.mjs";
 // POS-1066 A: the Hearth ballot's designs, each to its live preview on its author's own house (the map is the build's; ballot-links.mjs)
 import { hearthPreviews } from "@/lib/hearth/ballot-previews.mjs";
+// CORE-126: a Hearth design is NAMED by its authored title, "<title>, by <household>" (the build's metadata map; hearth/ballot-caption.mjs)
+import { hearthTitles } from "@/lib/hearth/ballot-titles.mjs";
 
 const t = tint("votes");
 const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wash:${t.wash};--lane-wash-hover:${t.washHover}`;
@@ -46,7 +48,7 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
       </p>
     </header>
 
-    <div data-votes aria-live="polite" data-hearth-previews={JSON.stringify(hearthPreviews)}>
+    <div data-votes aria-live="polite" data-hearth-previews={JSON.stringify(hearthPreviews)} data-hearth-titles={JSON.stringify(hearthTitles)}>
       <p class="v-loading">Opening the ballot box…</p>
     </div>
 
@@ -187,12 +189,15 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
     import { safeHref } from "@/lib/votes-render.mjs";
     import { mountBallotStake } from "@/lib/ballot-stake.mjs";
     import { readPreviews, seeItHref } from "@/lib/hearth/ballot-links.mjs";
+    import { readTitles, captionOf, captionsOf } from "@/lib/hearth/ballot-caption.mjs";
 
     (function () {
       var box = document.querySelector("[data-votes]");
       if (!box) return;
       // POS-1066 A: a Hearth ballot's design is seen live on its author's house; the build wrote the map, and only its own links are read back
       var previews = readPreviews(box.getAttribute("data-hearth-previews"));
+      // CORE-126: the build's id -> authored title map; a Hearth choice reads "<title>, by <credit>", anything unknown keeps its raw id
+      var titles = readTitles(box.getAttribute("data-hearth-titles"));
 
       // Every string the office sent goes in as a text node: a topic or a design is authored upstream, and nothing here parses markup.
       function el(tag, cls, text) {
@@ -219,7 +224,8 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
         else if (!t.candidates.length) ul.appendChild(el("li", "v-stage", "The office lists no designs on this ballot yet."));
         t.candidates.forEach(function (c) {
           var li = el("li", "v-cand");
-          li.appendChild(el("span", "v-cand-name", c.candidate));
+          var caption = captionOf(titles, t.topic, c.candidate, c.credit);
+          li.appendChild(el("span", "v-cand-name", caption || c.candidate));
           var track = el("span", "v-cand-track");
           var fill = el("span", "v-cand-fill");
           fill.style.width = c.pct + "%";
@@ -231,7 +237,7 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
           li.appendChild(n);
           // POS-983: the choice's own words beneath its bar: credit, note, an https link, the households backing it
           var words = [];
-          if (c.credit) words.push(el("span", "v-cand-credit", "by " + c.credit));
+          if (c.credit && !caption) words.push(el("span", "v-cand-credit", "by " + c.credit));   // a caption already says "by <credit>"
           if (c.note) words.push(el("span", "v-cand-note", c.note));
           // POS-1066 A: on the Hearth ballot, "see it" is the design's live preview on its author's house, in place of the office's link; any
           // other choice (and a design this build cannot draw) keeps the office's https link exactly as before
@@ -304,7 +310,7 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
             slot = el("div", "v-stake");
             slot.setAttribute("data-stake-slot", t.topic);
             mountedSlots[t.topic] = slot;
-            try { mountBallotStake(slot, { topic: t.topic, choices: t.raw }); } catch (e) { console.debug("ballot-box: stake form stood down (" + (e && e.message) + ")"); }
+            try { mountBallotStake(slot, { topic: t.topic, choices: t.raw, captions: captionsOf(titles, t.topic, t.raw) }); } catch (e) { console.debug("ballot-box: stake form stood down (" + (e && e.message) + ")"); }
           }
           card.appendChild(slot);
         }
