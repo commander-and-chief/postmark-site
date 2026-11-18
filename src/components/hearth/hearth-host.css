@@ -69,6 +69,21 @@
 .hearth-stage .hx-left { font-family: var(--pm-mono); font-size: 0.8rem; color: var(--hx-accent); margin-top: 0.2em; }
 
 /* ── panels, the feed and its chips ── */
+/* ── coming up (POS-1068): the old dashboard's event rows, in the Hearth's own tokens ── */
+.hearth-stage .hd-events { margin-top: 0.6em; }
+.hearth-stage .hd-events .hd-event { display: grid; grid-template-columns: 5.2em minmax(0, 1fr) auto; gap: 1em; align-items: center; background: var(--hx-glass); border: 1px solid var(--hx-hair); border-radius: var(--hx-radius); padding: 0.8em 1em; margin-bottom: 0.7em; }
+.hearth-stage .hd-events .hd-date { text-align: center; border-right: 1px solid var(--hx-hair); padding-right: 0.9em; }
+.hearth-stage .hd-events .hd-date .d { font-size: 1.7rem; color: var(--hx-warm); line-height: 1; }
+.hearth-stage .hd-events .hd-date .m { font-family: var(--pm-mono); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--hx-ink); opacity: 0.8; }
+.hearth-stage .hd-events h3 { margin: 0; font-size: 1.1rem; }
+.hearth-stage .hd-events h3 a { color: var(--hx-warm); }
+.hearth-stage .hd-events p { margin: 0.15em 0 0; font-size: 0.88rem; }
+.hearth-stage .hd-events .hd-going { display: flex; gap: 0.5em; flex-wrap: wrap; justify-content: flex-end; font-size: 0.85rem; }
+.hearth-stage .hd-events .hd-empty { padding-left: 0; }
+@media (max-width: 760px) {
+  .hearth-stage .hd-events .hd-event { grid-template-columns: 4em minmax(0, 1fr); }
+  .hearth-stage .hd-events .hd-going { grid-column: 1 / -1; justify-content: flex-start; }
+}
 .hearth-stage .hd-panel { background: var(--hx-glass); border: 1px solid var(--hx-hair); border-radius: var(--hx-radius); padding: 1em 1.1em 0.8em; }
 .hearth-stage .hd-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.4em 0.8em; flex-wrap: wrap; margin-bottom: 0.4em; }
 .hearth-stage .hd-ghost { font-family: var(--pm-mono); font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; border: 1px solid var(--hx-hair); border-radius: 999px; padding: 3px 10px; color: var(--hx-accent); background: transparent; cursor: pointer; }
@@ -246,13 +261,40 @@
 
 /* "Design your own" (POS-1021): a quiet summary beside the dropdown that opens a panel (the settings panel's pattern) holding the town's setup prompt in the site's own
  * .prompt-box. The panel is wide enough to read the prompt, never wider than the view, and scrolls inside itself. */
-.hearth-setup { position: relative; }
-.hearth-setup-sum { list-style: none; cursor: pointer; display: inline-block; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--hx-chrome-line); color: var(--hx-chrome-link); white-space: nowrap; }
-.hearth-setup-sum::-webkit-details-marker { display: none; }
+.hearth-setup, .hearth-backing { position: relative; }
+.hearth-setup-sum, .hearth-backing-sum { list-style: none; cursor: pointer; display: inline-block; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--hx-chrome-line); color: var(--hx-chrome-link); white-space: nowrap; }
+.hearth-setup-sum::-webkit-details-marker, .hearth-backing-sum::-webkit-details-marker { display: none; }
 .hearth-setup-sum:hover, .hearth-setup-sum:focus-visible, .hearth-setup[open] > .hearth-setup-sum { color: var(--hx-chrome-field-ink); background: var(--hx-chrome-field); }
+/* "Back this design" in the VOTE-ORANGE, with its stamp icon in STAMP PURPLE (POS-1066 visual FIX; Darko 2026-11-15 22:54 EST, via Wright 03:55:10Z). The oranges are
+ * the Ballot House's own, handed in by Hearth.astro from civic-art.mjs (`--hb-vote*`: ACCENTS.votes.A for the words, tint("votes") for the edge and washes); the
+ * purple is the stamp family's. Hover, keyboard focus and open deepen the wash and the edge; the words and the icon keep their colours in every state. */
+.hearth-backing-sum { display: inline-flex; align-items: center; gap: 0.4em; color: var(--hb-vote); border-color: var(--hb-vote-edge); background: var(--hb-vote-wash); }
+.hearth-backing-sum:hover, .hearth-backing-sum:focus-visible, .hearth-backing[open] > .hearth-backing-sum { color: var(--hb-vote); border-color: var(--hb-vote); background: var(--hb-vote-wash-hover); }
+.hearth-backing-sum:focus-visible { outline: 2px solid var(--hb-vote); outline-offset: 1px; }
+.hearth-backing-icon { display: inline-flex; flex: none; color: var(--pm-stamp); }
+.hearth-backing-icon svg { display: block; }
 .hearth-setup-panel { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; width: min(34rem, calc(100vw - 2rem)); box-sizing: border-box; }
 .hearth-setup-panel .prompt-box { margin: 0; border-color: var(--hx-chrome-line); }
 .hearth-setup-panel .prompt-box pre { max-height: min(60vh, 26rem); }
+
+/* "Back this design" (POS-1066 B): the same quiet summary, and a panel in the settings panel's surface holding /votes/'s stake form (ballot-stake.mjs draws
+ * it with its own sheet; here it takes the strip's colours, so its words sit on the field's surface in every theme the strip has). */
+.hearth-backing-panel { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; width: min(24rem, calc(100vw - 2rem)); box-sizing: border-box; padding: 0.7em 0.9em; border-radius: 8px; border: 1px solid var(--hx-chrome-line); background: var(--hx-chrome-field); color: var(--hx-chrome-field-ink); box-shadow: 0 6px 18px var(--hx-chrome-shade); font-family: var(--pm-serif, Georgia, serif); letter-spacing: normal; }
+.hearth-backing-ballot { margin: 0 0 0.6em; font-size: 0.78rem; line-height: 1.45; }
+.hearth-backing-note { margin: 0; font-size: 0.8rem; }
+.hearth-backing-panel .bs .bs-head { color: var(--hx-chrome-link); }
+.hearth-backing-panel .bs .bs-gate, .hearth-backing-panel .bs .bs-out .bs-line { opacity: 1; }
+.hearth-backing-panel .bs .bs-row select, .hearth-backing-panel .bs .bs-row input { background: var(--hx-chrome-field); color: var(--hx-chrome-field-ink); border: 1px solid var(--hx-chrome-line); border-radius: 6px; }
+.hearth-backing-panel .bs button, .hearth-backing-signin { font: 0.78rem/1 var(--pm-mono, monospace); padding: 0.6em 1em; border-radius: 999px; cursor: pointer; background: transparent; color: var(--hx-chrome-link); border: 1px solid var(--hx-chrome-line); }
+.hearth-backing-panel .bs button:hover, .hearth-backing-panel .bs button:focus-visible, .hearth-backing-signin:hover, .hearth-backing-signin:focus-visible { border-color: var(--hx-chrome-link); }
+.hearth-backing-panel .bs .bs-out.refused .bs-title, .hearth-backing-panel .bs .bs-out.ambiguous .bs-title { color: var(--hx-chrome-no); }
+.hearth-backing-panel .bs .bs-out.staked .bs-title { color: var(--hx-chrome-ok); }
+/* on a phone the summary can sit anywhere in the corner's wrapped row, so a panel hung from its right edge runs off the screen (measured at 390 px: 134 px
+   off the left): there the open control takes the row's whole width and the panel flows under its summary instead */
+@media (max-width: 520px) {
+  .hearth-backing[open] { flex: 1 1 100%; }
+  .hearth-backing-panel { position: static; width: auto; margin-top: 6px; }
+}
 
 /* the dropdown (POS-962; the dropdown alone by POS-999 round 3, Darko 2026-11-12 08:56 EST): the preview select every reader has, the design's credit, and for the
  * house's signed-in human, while it shows another design than the kept one, a green check (save) and a red x (put it back) beside it. No words explain them;

@@ -163,6 +163,18 @@ const closer = name === "closer"
   </section>
 )}
 
+{/* COMING UP (POS-1068): the old household page's section, restored as a public slot. The hooks are the dashboard's own
+    (`data-hd-coming`, `data-hd-events`): household-dashboard/paint.mjs paintComing draws the rows from the same calendar read and the
+    same hosting-or-going filter (fold.mjs comingUpOf), so this is markup only. It ships hidden and the painter shows it, with words for
+    "still reading", "did not answer" and "nothing coming" that are not the same words. Public: no bearer, no owner gate. */}
+{name === "coming-up" && (
+  <section class="hx hx-coming hd-panel" data-hearth-slot="coming-up" data-hd-coming hidden aria-labelledby="hx-coming-h">
+    <h2 id="hx-coming-h">Coming up</h2>
+    <p class="hd-meta" data-hearth-part="caption">the events this house hosts or is going to</p>
+    <div class="hd-events" data-hd-events></div>
+  </section>
+)}
+
 {name === "around-town" && (
   <section class="hx hx-town" data-hearth-slot="around-town" aria-labelledby="hx-town-h">
     <h2 id="hx-town-h">Around town</h2>

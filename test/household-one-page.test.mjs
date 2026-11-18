@@ -11,7 +11,7 @@
 // WHAT THIS HOLDS, and what reads what:
 //   - the SEAM: the page asks ONE function which design to draw (which-design.mjs); the function is run, and the built page
 //     is checked against its answer;
-//   - the ONE PAGE: no band, no old tab rail, no quests, no ballots; the strip (the breadcrumb, the household's sub-rail with the Hearth dropdown for
+//   - the ONE PAGE: no band, no old tab rail, no quests, no ballots section (the Hearth ballot's one control is in the strip, POS-1066, below); the strip (the breadcrumb, the household's sub-rail with the Hearth dropdown for
 //     everyone and the owner's + and settings, POS-999, held in full by test/house-rail.test.mjs) above the design; the old /hearth/ address forwarding with the preview's query riding across (the
 //     forwarder's own script is RUN); `?resident=` redirecting to the resident's own page (that script is RUN too); the ways in (the
 //     layout's household link, a resident page's rail);
@@ -189,28 +189,82 @@ test("the design's own Needs you and boat line are on: the host stands down no s
   assert.match(read("src/components/hearth/HearthSlot.astro"), /<p class="hd-boat" data-private data-hd-boat hidden><\/p>/, "the boat line is in the happened slot, private, shipped hidden");
 });
 
-// ── no ballot on the household page (moved here from test/band-ballots.test.mjs, which goes with the retired band-ballots.mjs and HouseBand.astro) ──
-// Until 2026-11-10 the band hosted POS-502's stake form for the signed-in human. The band is gone (Darko, 17:14–17:28 EST: the theme is the page; the stake form is
-// off the household page and on /votes/), so these hold the inversion: nothing a household page loads carries the ballots, and /votes/ is where the form is mounted.
+// ── the Hearth ballot on the household page: ONE control in the site's strip (POS-1066), never the old band (moved here from test/band-ballots.test.mjs) ──
+// LAW (Wright 2026-11-16 01:03:33Z, relaying Darko 2026-11-15 19:59–20:03 EST, "por qué no los dos" and the hotfix go): "'Back this design' beside the Hearth's
+// dropdown while the Hearth ballot is in staking, reusing `/votes/`'s signed-in stake form."
+// UNTIL 2026-11-16 these two tests asserted the inversion of 11-10 (Darko, 17:14–17:28 EST: the band is gone, the theme is the page, "the stake form is off the
+// household page and on /votes/"): that the stage imported no ballot module and no built household page carried a stake form. POS-1066 replaced that law, so
+// they now hold its shape:
+//   - the HOST: the stake form reaches a household page only through hearth/backing.mjs, into the one `[data-hearth-backing]` <details> in the site's strip,
+//     after the dropdown and OUTSIDE the design's region; it ships hidden, and nothing of the form is in the built page (it is mounted in the browser, only
+//     when the office's read says the Hearth ballot is staking: test/hearth-backing*.test.mjs). The retired band (HouseBand, band-ballots) stays gone;
+//   - the ACTORS: backing is for any reader (public) and stakes as the reader's OWN resident; the house's save stays its own human's (the dropdown's gate);
+//   - the DESIGN'S SCRIPT gets no grant from it: `hearth` (script.mjs § hearthApi) is the same object it was, rooted at the design's stage, and its act still
+//     refuses a reader who is not the house's human and a preview. Its gate is the town's review (Darko 2026-11-13: no frame, no sandbox), which
+//     PROJECTS/household-hearths/README.md § 6 reads for: it "refuses a script that: acts other than on the reader's own click … reaches for the reader's
+//     sign-in, storage or cookies … or dresses up as the site's own controls".
 
-test("PIN the household page carries no ballots: the stage imports neither module, and /votes/ is where the stake form is mounted", () => {
+test("PIN the household page's one ballot host: the stake form comes only through backing.mjs, into the strip's hidden control; the save stays the house's; /votes/ keeps its own", () => {
   const stage = read("src/lib/hearth/stage.mjs");
-  assert.ok(!/band-ballots|ballot-stake|mountBandBallots|pm:ballot-staked/.test(stage), "the household page's script has no ballots and no stake form");
-  for (const f of ["src/components/hearth/Hearth.astro", "town/components/HouseholdPage.astro", "town/components/Household.astro", "town/pages/households/[slug].astro"]) {
-    assert.ok(!/band-ballots|ballot-stake|data-hb-|hband/.test(read(f)), `${f} names no ballots and no band`);
+  // the HOST: one module brings the form to this page, and the stage mounts it handing it nothing of the house
+  assert.match(stage, /import \{ mountHearthBacking \} from "\.\/backing\.mjs";/);
+  assert.match(stage, /const backing = backingRoot \? mountHearthBacking\(backingRoot\) : null;/, "mounted with the strip's element and nothing else");
+  assert.match(stage, /const backingRoot = bar\?\.querySelector\("\[data-hearth-backing\]"\) \?\? null;/, "found in the strip, never in the design's stage");
+  const pageFiles = ["src/lib/hearth", "src/components/hearth"].flatMap((d) => fs.readdirSync(path.join(ROOT, d)).map((f) => `${d}/${f}`))
+    .concat(["town/components/HouseholdPage.astro", "town/components/Household.astro", "town/pages/households/[slug].astro"])
+    .filter((f) => /\.(mjs|astro)$/.test(f));
+  const importers = (mod) => pageFiles.filter((f) => new RegExp(`^\\s*import [^;]*from "[^"]*/${mod}"`, "m").test(read(f)));
+  // band-ballots.mjs is the RETIRED band's module, kept only until it is `git rm`'d (its own header): it still imports the form, and nothing imports it
+  assert.deepEqual(importers("ballot-stake.mjs"), ["src/lib/hearth/backing.mjs", "src/lib/hearth/band-ballots.mjs"], "the household-page files that import the stake form");
+  assert.deepEqual(importers("band-ballots.mjs"), [], "and the retired one is imported by nothing, so backing.mjs is the one live host");
+  assert.deepEqual(importers("backing.mjs"), ["src/lib/hearth/stage.mjs"], "which only the stage mounts");
+  for (const f of ["src/lib/hearth/stage.mjs", "src/components/hearth/Hearth.astro", "town/components/HouseholdPage.astro", "town/components/Household.astro", "town/pages/households/[slug].astro"]) {
+    assert.ok(!/band-ballots|mountBandBallots|data-hb-|hband/.test(read(f)), `${f}: the retired band stays gone`);
   }
+  const astro = read("src/components/hearth/Hearth.astro");
+  assert.equal((astro.match(/data-hearth-backing hidden/g) ?? []).length, 1, "one control, shipped hidden");
+  const at = astro.indexOf("data-hearth-backing hidden");
+  assert.ok(astro.indexOf("<HearthPicker") < at && at < astro.indexOf(ENTRY_OPEN), "in the strip after the dropdown, before the design's region opens");
+  // the ACTORS: the save is the house's own human's (the picker's gate, unchanged); backing reads no house at all, so it is the reader's (/me) for any reader
+  assert.match(stage, /signedIn: \(\) => readOk && mine\(\)\.length > 0, onDraw,/, "the dropdown's save: the read answered AND the sign-in holds a resident of THIS house");
+  const backing = read("src/lib/hearth/backing.mjs").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(backing, /handles|signedIn|mine\(|hearthKey|data-hearth-faces|saveHearth/, "backing reads nothing of the viewed house: the actor is the reader's own resident");
+  assert.match(backing, /mount\(slot, \{ topic, choices: \[\{ candidate: id \}\], doc, storage: store, fetchImpl, base \}\)/, "/votes/'s form, for the one design, unchanged");
+  // /votes/ keeps its own form, as POS-1054 left it
   const votes = read("town/pages/votes/index.astro");
   assert.match(votes, /import \{ mountBallotStake \} from "@\/lib\/ballot-stake\.mjs";/, "the form is /votes/'s");
-  assert.match(votes, /mountBallotStake\(slot, \{ topic: t\.topic, choices: t\.candidates \}\)/, "mounted under each STAKING ballot");
-  assert.match(votes, /if \(t\.status !== "staking"\) return;/);
+  assert.match(votes, /mountBallotStake\(slot, \{ topic: t\.topic, choices: t\.raw \}\)/, "mounted under each STAKING ballot");
+  assert.match(votes, /if \(kind === "staking"\) \{\s*var slot = mountedSlots\[t\.topic\];\s*if \(!slot\) \{\s*slot = el\("div", "v-stake"\);/, "once per topic, kept across board refreshes (POS-1054 lifecycle fix)");
 });
 
-test("built: no household page carries a ballots section or a stake form, and /votes/ still ships the slot the form mounts into", { skip: !built }, () => {
+test("the design's script gets no grant from the ballot host: `hearth` is the same object, rooted at the design's stage, and its act still refuses a visitor and a preview", async () => {
+  const { hearthApi, NOT_YOUR_HOUSE, PREVIEW_ONLY } = await import("../src/lib/hearth/script.mjs");
+  const stage = { querySelector: () => null };
+  const sent = [];
+  const fetchImpl = async (u, i) => { sent.push([u, i?.method]); return { ok: true, status: 200, json: async () => ({}) }; };
+  const make = (state) => hearthApi({ entryId: "glow", stage, house: { slug: "fox", key: "fox", handles: ["fox"], residents: [] }, api: "https://o.test", state,
+    listeners: { bundle: new Set(), view: new Set() }, fetchImpl });
+  const h = make({ bundle: null, owner: false, token: () => "a-token", saved: () => "glow" });
+  assert.deepEqual(Object.keys(h).sort(), ["act", "api", "bundle", "entry", "house", "on", "pane", "parts", "read", "root", "view"].sort(), "the same keys as before POS-1066: nothing about ballots, stakes or the strip");
+  assert.equal(h.root, stage, "rooted at the design's stage; the ballot control is in the site's strip, outside it");
+  assert.equal(await h.act({ door: "household", do: "stake-vote", args: { from: "fox", topic: "hearth-default", candidate: "glow", stamps: 20 } }), NOT_YOUR_HOUSE, "a visitor's page: the design acts for nobody");
+  const owner = make({ bundle: null, owner: true, token: () => "a-token", saved: () => "other-design" });
+  assert.equal(await owner.act({ door: "household", do: "stake-vote", args: { from: "fox", topic: "hearth-default", candidate: "glow", stamps: 20 } }), PREVIEW_ONLY, "a preview: the design acts for nobody");
+  assert.deepEqual(sent, [], "and nothing was sent");
+});
+
+test("built: each household page ships the one hidden 'Back this design' control in its strip, outside the design's region, and no stake form; /votes/ still ships its slot", { skip: !built }, () => {
   const slugs = slugsBuilt();
   assert.ok(slugs.length > 10, `household pages read: ${slugs.length}`);
   for (const slug of slugs) {
     const html = dist("households", slug, "index.html");
-    assert.ok(!/data-hband|hband-|data-hb-ballot|data-hb-stake|class="bs[ "]|bs-form|bs-confirm/.test(html), `${slug}: no band, no ballots section and no stake form (a resident’s own prose may say stake-vote, so the form’s markers are what is looked for)`);
+    assert.ok(!/data-hband|hband-|data-hb-ballot|data-hb-stake|class="bs[ "]|bs-form|bs-confirm/.test(html), `${slug}: no band, no ballots section and no stake form in the built page (the form is mounted in the browser, and only while staking)`);
+    const controls = html.match(/<details[^>]*data-hearth-backing[^>]*>/g) ?? [];
+    assert.equal(controls.length, 1, `${slug}: one Back control`);
+    assert.match(controls[0], /\shidden(\s|>|=)/, `${slug}: it ships hidden`);
+    const region = html.slice(html.indexOf(ENTRY_OPEN), html.indexOf(ENTRY_CLOSE));
+    assert.ok(region.length > 0 && !region.includes("data-hearth-backing"), `${slug}: not inside the design's region`);
+    assert.ok(withoutEntryRegion(html).includes("data-hearth-backing"), `${slug}: in the site's own part of the page`);
   }
   assert.ok(dist("votes", "index.html").includes("data-votes"), "/votes/ is built, with the box the tally and the form are drawn into");
 });

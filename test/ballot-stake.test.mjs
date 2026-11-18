@@ -134,7 +134,11 @@ test("the page: a staking ballot carries the stake form; a closed one does not; 
   assert.doesNotMatch(topicHtml({ topic: "hearth", status: "closed", candidates: cands }), /data-stake-slot/);
   assert.match(topicHtml({ topic: `a"b`, status: "staking", candidates: [] }), /data-stake-slot="a&quot;b"/, "the slot's topic is escaped for its attribute");
   assert.equal(votesHtml({ topics: [{ topic: "a", status: "staking", candidates: [] }, { topic: "b", status: "staking", candidates: [] }] }).match(/data-stake-slot/g).length, 2);
-  assert.match(PAGE, /box\.innerHTML = votesHtml\(data\);[\s\S]*if \(t\.status !== "staking"\) return;[\s\S]*mountBallotStake\(slot, \{ topic: t\.topic, choices: t\.candidates \}\)/);
+  // POS-1054 (2026-11-15): the sectioned page builds the same slot itself (a div.v-stake with data-stake-slot = the topic) in each STAKING
+  // ballot's card and mounts the form into it with the office's choices as sent; a closed, submissions or unrecognised ballot gets none.
+  // ...and, since the frontier review of 147f72d3, ONCE per topic: the slot holding a mounted form is kept in `mountedSlots` and moved into each
+  // redrawn card, so a board refresh never remounts (it would reset the form's held state and leave another pm:lens listener).
+  assert.match(PAGE, /if \(kind === "staking"\) \{\s*var slot = mountedSlots\[t\.topic\];\s*if \(!slot\) \{\s*slot = el\("div", "v-stake"\);\s*slot\.setAttribute\("data-stake-slot", t\.topic\);\s*mountedSlots\[t\.topic\] = slot;[\s\S]*mountBallotStake\(slot, \{ topic: t\.topic, choices: t\.raw \}\)[\s\S]*card\.appendChild\(slot\);/);
   assert.doesNotMatch(MODULE, /innerHTML/, "every word goes in as text");
   assert.match(BALLOT_STAKE_CSS, /\.bs \.bs-out\.ambiguous/);
 });

@@ -351,8 +351,19 @@ function paintCards(root, items, reads, ctx) {
 function paintComing(root, events, ctx) {
   const sec = root.querySelector("[data-hd-coming]");
   if (!sec) return;
-  if (events == null) { sec.hidden = true; return; } // the calendar did not answer
   const list = sec.querySelector("[data-hd-events]");
+  if (events == null) {
+    // The calendar has not answered, and there are two reasons that must not read alike (POS-1068; POS-984's rule): it is still COMING
+    // (`ctx.reading.house` names it), or it FAILED. Neither is "nothing is coming", and neither is hidden any more: a house whose events
+    // vanish without a word is the bug this restores. The words are the two, and only the second says it did not answer.
+    list.textContent = "";
+    const pending = (ctx.reading ?? NOT_READING).house.includes("calendar");
+    list.appendChild(el("p", "hd-empty" + (pending ? " is-reading" : " is-failed"), pending
+      ? "Still reading the calendar…"
+      : "The calendar did not answer, so what this house is hosting or going to can’t be shown right now."));
+    sec.hidden = false;
+    return;
+  }
   list.textContent = "";
   if (!events.length) list.appendChild(el("p", "hd-empty", "Nothing on the calendar that the house is hosting or going to."));
   for (const e of events) {
