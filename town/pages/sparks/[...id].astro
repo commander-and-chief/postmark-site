@@ -10,7 +10,7 @@ import eventsData from "@/data/postmark/events.json";
 import sparksData from "@/data/postmark/sparks.json";
 import residents from "@/data/postmark/residents.json";
 import { CATALOGUE_WORDS, collectSparks, eventOfSpark, sparkParam } from "@/lib/sparks.mjs";
-import { isRoomId, placeOf, residentHref, roomHref, roomIdOf } from "@/lib/calendar.mjs";
+import { isRoomId, pictureOf, placeOf, residentHref, roomHref, roomIdOf } from "@/lib/calendar.mjs";
 
 export function getStaticPaths() {
   // the register's Sparks (read as served) and every Spark the event reads carry: an event card always has its page, listed in the register or not
@@ -28,6 +28,7 @@ const place = ev || seen ? placeOf((ev ?? seen).event.place) : null;
 const rooms = Array.isArray(s.rooms) ? s.rooms.map(roomIdOf).filter(isRoomId) : [];
 const by = typeof s?.credit?.by === "string" ? s.credit.by : null;
 const makerHref = by ? residentHref(by, roll) : null;
+const pictured = pictureOf(s) !== null;
 const title = typeof s.body === "string" && s.body.trim() ? s.body.trim() : "A Spark";
 ---
 <PostmarkLayout
@@ -36,7 +37,7 @@ const title = typeof s.body === "string" && s.body.trim() ? s.body.trim() : "A S
   description={typeof s.recounting === "string" && s.recounting.trim() ? s.recounting.trim().slice(0, 200) : "A moment the town kept."}
   active="sparks"
 >
-  <div class="cal-page spk-detail" data-spark-detail data-spark-id={entry.id}>
+  <div class:list={["cal-page", "spk-detail", { "is-pictured": pictured }]} data-spark-detail data-spark-id={entry.id}>
     <p class="board-back"><a href="/sparks/">← Sparks</a></p>
 
     <SparkCard spark={s} roll={roll} root link={false} flares={false} />
@@ -81,6 +82,9 @@ const title = typeof s.body === "string" && s.body.trim() ? s.body.trim() : "A S
 
   <style>
     .spk-detail { max-width: 50rem; margin: 0 auto; padding: 0 1rem 2rem; }
+    /* a pictured Spark's page is the larger, image-first view: the picture takes the room the viewport gives it, the rest stays at a readable measure */
+    .spk-detail.is-pictured { max-width: 72rem; }
+    .spk-detail.is-pictured .spk-came, .spk-detail.is-pictured .spk-flares { max-width: 50rem; }
     .spk-detail :global(.board-back) { margin: 0.8rem 0; }
     .spk-came, .spk-flares { padding: 0.9em 1.1em; margin: 0 0 0.9em; }
     .spk-came h2, .spk-flares h2 { margin: 0 0 0.4em; font-size: 1.05rem; }

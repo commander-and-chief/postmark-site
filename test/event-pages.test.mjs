@@ -349,7 +349,9 @@ test("BUILT FALSIFIER: the ended event outside the seven-day list has its page a
   assert.ok(t.includes("Harvest Supper (invented; ended outside the seven-day list)"));
   // the sparks: EVERY public completion spark, in the producer's order, each with headline, recounting and credit; then the public reference and the note
   const spark = section(html, "data-ev-sparks");
-  assert.match(textOf(spark), /A long table, too many dishes, and one very serious argument about pie\./);
+  // the PICTURED one is the picture and one caption (CORE-121, Darko 13:14 EST): its recounting is on its own page, not on the card
+  assert.equal(/A long table, too many dishes, and one very serious argument about pie\./.test(textOf(spark)), false, "an image card carries no recounting");
+  assert.match(textOf(built("sparks", "supperkeeper-test", "harvest-supper-test")), /A long table, too many dishes, and one very serious argument about pie\./, "the bigger view has every served word");
   assert.match(textOf(spark), /The second room kept talking about pie until the lamps went out\./);
   assert.deepEqual([...spark.matchAll(/data-spark="([^"]*)"/g)].map((m) => m[1]), ["supperkeeper-test/harvest-supper-test", "supperkeeper-test/harvest-supper-guests-test"], "both completion sparks, none chosen as the default");
   assert.equal((spark.match(/data-spark-picture/g) ?? []).length, 1, "only the spark that has a picture draws a picture tile");
@@ -578,7 +580,18 @@ test("BUILT: /sparks/ (register read OK) lists ONLY the register's Sparks, once 
   assert.match(html, /For agents:/); assert.ok(html.includes("GET /api/world2/marks?all=true&amp;full=true") || html.includes("GET /api/world2/marks?all=true&full=true"), "the foot names the actual REST producer");
   assert.equal(html.includes('read: "calendar"'), false, "and invents no MCP read");
   assert.equal(/Every accepted Spark/i.test(textOf(html)) || /every accepted Spark/i.test(html), false, "no unconditional 'every accepted Spark' lead or meta");
-  for (const c of cards) { assert.match(c, /data-spark-open/); assert.match(c, /data-spark-flares/); }
+  for (const c of cards) {
+    assert.match(c, /data-spark-open/);
+    if (/data-spark-picture/.test(c)) {
+      // IMAGE-FIRST: the picture fills the card, ONE caption (name, maker); no recounting, date, room, household or Flares panel on it
+      assert.match(c, /is-image-card/); assert.match(c, /data-spark-caption/);
+      for (const gone of ["data-spark-recounting", "data-spark-when", "data-spark-rooms", "data-spark-flares", "hh:"]) assert.equal(c.includes(gone), false, `a pictured card carries no ${gone}`);
+      assert.ok(c.indexOf("data-spark-picture") < c.indexOf("data-spark-caption"), "the caption is below the picture");
+    } else assert.match(c, /data-spark-flares/, "an unpictured card is as before, empty Flares place and all");
+  }
+  const cells = html.split("data-spark-cell ").slice(1);
+  assert.ok(cells.some((c) => c.includes('data-has-picture="1"')), "the fixture has a pictured card");
+  for (const c of cells) assert.equal(c.includes('data-has-picture="1"') && c.split("</div>")[0].includes("spk-tag"), false, "no second metadata row under a pictured card");
   assert.doesNotMatch(html, /harvest-supper-pending-test|withdrawn-one-test|before-the-record-test/, "a pending/withdrawn reference is not a Spark here");
   assert.match(html, /data-spark-filters/); for (const f of SPARK_FILTERS) assert.ok(html.includes(`data-filter="${f.key}"`), f.key);
   assert.equal((html.match(/data-has-event="0"/g) ?? []).length, 2, "the register's eventless Sparks are drawn, the lamp among them");
@@ -604,6 +617,11 @@ test("BUILT: every Spark has its page at its canonical address: its card in full
     const t = textOf(section(html, "data-spark-flares-place"));
     assert.ok(t.includes(CATALOGUE_WORDS.flares) && t.includes(CATALOGUE_WORDS.flaresNone), `${id}: the empty Flares place`);
   }
+  // a PICTURED Spark's page is the larger, image-first view: the picture first and whole (own big-card class, no thumbnail cap), every served word below it
+  const big = built("sparks", "supperkeeper-test", "harvest-supper-test");
+  assert.match(big, /class="[^"]*\bis-big\b/); assert.match(big, /spk-detail[^"]*is-pictured/);
+  assert.ok(big.indexOf("data-spark-picture") < big.indexOf("data-spark-recounting"), "the picture comes before the text");
+  for (const kept of ["data-spark-recounting", "data-spark-credit", "data-spark-when", "data-spark-came", "data-spark-flares-place"]) assert.ok(big.includes(kept), `the bigger view keeps ${kept}`);
   const rootHtml = built("sparks", "supperkeeper-test", "harvest-supper-test");
   assert.ok(textOf(rootHtml).includes("Event:") && textOf(rootHtml).includes("Harvest Supper (invented; ended outside the seven-day list)"));
   assert.match(rootHtml, /href="\/events\/supperkeeper-test\/harvest-supper-test\/"/, "the event link is the event's page");

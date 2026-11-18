@@ -50,9 +50,10 @@ const eventTitle = (entry) => eventOfSpark(entry, calendar, eventsData)?.event?.
           {entries.map((entry) => (
             <div class="spk-cell" data-spark-cell data-has-event={entry.eventId !== null ? "1" : "0"} data-has-picture={pictureOf(entry.spark) ? "1" : "0"}>
               <SparkCard spark={entry.spark} roll={roll} />
-              {entry.eventId !== null
+              {/* a PICTURED card is the picture and one caption (Darko 13:14 EST): no second metadata row under it; its event is on its page */}
+              {!pictureOf(entry.spark) && (entry.eventId !== null
                 ? <p class="spk-tag" data-spark-event>event: {eventTitle(entry) ?? entry.eventId}</p>
-                : <p class="spk-tag" data-spark-event>no event named</p>}
+                : <p class="spk-tag" data-spark-event>no event named</p>)}
             </div>
           ))}
         </div>
@@ -98,7 +99,6 @@ const eventTitle = (entry) => eventOfSpark(entry, calendar, eventsData)?.event?.
     .spk-filter:focus-visible { outline: 3px solid var(--pm-wax, #b4561f); outline-offset: 2px; }
     .spk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 1rem; align-items: start; }
     .spk-cell[hidden] { display: none; }
-    .spk-grid :global(.spark-card.has-picture) { grid-template-columns: minmax(0, 1fr); }
     .spk-tag { margin: -0.4em 0 0.8em; font-size: 0.85rem; opacity: 0.85; }
     .spk-partial { margin: 1rem 0; max-width: 46rem; }
   </style>

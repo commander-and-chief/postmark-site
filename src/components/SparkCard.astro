@@ -33,11 +33,32 @@ const headline = typeof s?.body === "string" && s.body.trim() ? s.body.trim() : 
 const recounting = typeof s?.recounting === "string" && s.recounting.trim() ? s.recounting.trim() : null;
 const rooms = Array.isArray(s?.rooms) ? s.rooms.map(roomIdOf).filter(isRoomId) : [];
 const href = link ? sparkHref(s?.id) : null;
+// IMAGE-FIRST (Darko 2026-11-18 13:14 EST: "MUCH more image-centric IF there is an image ... the image take up everything with a small caption line at the bottom,
+// and clicking should open it even bigger with all of the text elements"). A PICTURED card in a listing (link on) is the picture edge to edge plus ONE small caption
+// (name, maker): no recounting, date, room, household or Flares panel. The detail's own card (link off) shows the picture as large as the viewport permits, then every
+// served word below it. A card with no picture is exactly as before.
+const listed = !!pic && link;
+const big = !!pic && !link;
 ---
-<article class:list={["spark-card", "pm-paper", { "is-root": root, "has-picture": !!pic, "is-link": !!href }]} data-spark={s?.id ?? ""} data-spark-root={root ? "" : undefined}>
+{listed ? (
+<article class:list={["spark-card", "pm-paper", "has-picture", "is-image-card", { "is-root": root, "is-link": !!href }]} data-spark={s?.id ?? ""} data-spark-root={root ? "" : undefined}>
+  <figure class="spark-pic" data-spark-picture>
+    <img src={pic.src} alt={pic.alt ?? (headline ?? "")} loading="lazy" decoding="async" />
+  </figure>
+  <div class="spark-cap" data-spark-caption>
+    {headline || href ? (
+      root
+        ? <h2 class="spark-head" data-spark-headline>{href ? <a class="spark-open" href={href} data-spark-open>{headline ?? "Open this Spark"}</a> : headline}</h2>
+        : <h3 class="spark-head" data-spark-headline>{href ? <a class="spark-open" href={href} data-spark-open>{headline ?? "Open this Spark"}</a> : headline}</h3>
+    ) : null}
+    {by && <span class="spark-maker soft" data-spark-credit>by {by}</span>}
+  </div>
+</article>
+) : (
+<article class:list={["spark-card", "pm-paper", { "is-root": root, "has-picture": !!pic, "is-link": !!href, "is-big": big }]} data-spark={s?.id ?? ""} data-spark-root={root ? "" : undefined}>
   {pic && (
     <figure class="spark-pic" data-spark-picture>
-      <img src={pic.src} alt={pic.alt ?? (headline ?? "")} loading="lazy" decoding="async" />
+      <img src={pic.src} alt={pic.alt ?? (headline ?? "")} loading={big ? "eager" : "lazy"} decoding="async" />
     </figure>
   )}
   <div class="spark-body">
@@ -72,6 +93,7 @@ const href = link ? sparkHref(s?.id) : null;
     )}
   </div>
 </article>
+)}
 
 <style>
   .spark-card { position: relative; display: grid; gap: 0.8em; padding: 0.9em 1.1em; margin: 0 0 0.9em; }
@@ -96,8 +118,22 @@ const href = link ? sparkHref(s?.id) : null;
   .spark-card.is-link:has(.spark-open:focus-visible) { outline: 3px solid var(--pm-wax); outline-offset: 2px; }
   .spark-card .spark-open:focus-visible { outline: none; text-decoration: underline; }
   .spark-credit a, .spark-rooms a { position: relative; z-index: 2; }
+  /* the pictured listing card: the picture fills the card edge to edge, one small caption line at the bottom (the card is still one whole link) */
+  .spark-card.is-image-card { display: block; padding: 0; overflow: hidden; }
+  .spark-card.is-image-card .spark-pic { margin: 0; }
+  .spark-card.is-image-card .spark-pic img { width: 100%; height: auto; border: 0; border-radius: 0; }
+  .spark-card.is-image-card .spark-cap { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.1em 0.6em; padding: 0.45em 0.8em 0.55em; }
+  .spark-card.is-image-card .spark-head { margin: 0; font-size: 0.92rem; font-weight: 700; line-height: 1.3; }
+  .spark-card.is-image-card.is-root .spark-head { font-size: 1.05rem; }
+  .spark-card.is-image-card .spark-maker { font-size: 0.8rem; }
+  /* the detail's own big card: the picture first, as large as the viewport permits and whole (never the listing's thumbnail cap), all the text below at a readable measure */
+  .spark-card.is-big, .spark-card.is-big.is-root.has-picture { display: block; padding: 0; overflow: hidden; }
+  .spark-card.is-big .spark-pic { margin: 0; text-align: center; background: var(--pm-paper-deep, rgba(0,0,0,0.06)); }
+  .spark-card.is-big .spark-pic img { display: inline-block; width: auto; max-width: 100%; height: auto; max-height: 85vh; object-fit: contain; border: 0; border-radius: 0; }
+  .spark-card.is-big .spark-body { max-width: 46rem; padding: 0.9em 1.1em 1em; }
+  .spark-card.is-big .spark-head { font-size: 1.4em; }
   @media (max-width: 520px) {
-    .spark-card.has-picture, .spark-card.is-root.has-picture { grid-template-columns: minmax(0, 1fr); }
-    .spark-pic { max-width: 16rem; }
+    .spark-card.has-picture:not(.is-image-card):not(.is-big), .spark-card.is-root.has-picture:not(.is-image-card):not(.is-big) { grid-template-columns: minmax(0, 1fr); }
+    .spark-card:not(.is-image-card):not(.is-big) .spark-pic { max-width: 16rem; }
   }
 </style>
