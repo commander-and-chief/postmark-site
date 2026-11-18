@@ -167,16 +167,17 @@ export function mountHearth(root, { loadScript } = {}) {
   let loadSeq = 0;
   async function load() {
     const own = mine();
-    const key = own.join(",");
-    if (reads && key === readFor) { draw(); return; }
-    readFor = key;
+    const who = own.join(",");
+    if (reads && who === readFor) { draw(); return; }
+    readFor = who;
     const seq = ++loadSeq;
     const still = readingOf(reads);
     const progressive = !reads || still.residents.length > 0 || still.house.length > 0;
     // the posts are read once, beside the house's reads, and painted when they land; the part keeps its placeholder until then
     if (!extras && !extrasAsked) { extrasAsked = true; readHearthExtras().then((x) => { extras = x; draw(); }); }
+    // the house's canonical key (the registry's slug, data-hearth-key), which the one aggregate read asks by; the display slug is not it
     const done = await readHouse(handles, {
-      token: own.length ? token() : null, mine: own,
+      key, token: own.length ? token() : null, mine: own,
       onProgress: progressive ? (snapshot) => { if (seq === loadSeq) { reads = snapshot; draw(); } } : null,
     });
     if (seq !== loadSeq || progressive) return;   // a newer read has taken over (this one's answer is stale), or the last progress was this answer and is drawn

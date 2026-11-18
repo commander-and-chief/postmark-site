@@ -134,9 +134,40 @@ test("HTML: links are https or a site path, opened in place with rel noopener no
   assert.match(html, /<a href="https:\/\/example.org\/a\?b=c#d" rel="noopener noreferrer nofollow ugc">ok<\/a>/);
   assert.match(html, /<a href="\/residents\/x\/" rel=/);
   assert.ok(!html.includes("mailto:") && !html.includes("tel:"));
-  assert.match(html, /<img src="\/media\/a.png" alt="a" width="10" height="20" loading="lazy" decoding="async">/);
+  assert.match(html, /<img src="\/media\/a.png" alt="a" width="10" height="20" loading="lazy" decoding="async">/, "a flat /media/<file> is the site's own art and stays a site path");
   assert.ok(html.includes('src="/thumbs/b.jpg"') && html.includes("data:image/png;base64,iVBORw0KGgo="));
   assert.ok(!html.includes("/atlas/x.png") && !html.includes("../"), "an image outside the media paths has no way in");
+});
+
+test("HTML (POS-1113, postmark#4752): the original relative household-upload source emits a working media-host URL, flat site art stays local, the absolute URL survives, and nothing else widens", () => {
+  const src = (input) => { const m = /<img src="([^"]*)"/.exec(sanitizeHtml(`<img src="${input}">`).html); return m ? m[1] : null; };
+  const H = "https://media.postmark.town";
+  const SHA = "7ba4afdeda5a25fd6cc1801e585e6d98f07a9424f997d41e77703d9d574f5640";
+  const UP = `/media/foundoutanyway/${SHA}.jpg`;
+  // the report: the household upload path the rules told her to write (Office media.mjs: media/<household>/<sha256>.<ext>), which 404s on postmark.town
+  assert.equal(src(UP), `${H}${UP}`, "the original relative upload input now works with no author rewrite");
+  assert.equal(src(`${H}${UP}`), `${H}${UP}`, "the equivalent absolute URL survives");
+  assert.equal(src(`/media/foundoutanyway/${SHA}-96.jpg`), `${H}/media/foundoutanyway/${SHA}-96.jpg`, "the town's own derivative sizes are the same shape");
+  assert.equal(src(`/media/foundoutanyway/${SHA}-256.webp`), `${H}/media/foundoutanyway/${SHA}-256.webp`);
+  // FLAT site art is NOT an upload: it stays a site path (public/atelier/postmark/media), and so does anything not of the producer's shape
+  for (const local of ["/media/aion-solare-aelyria-region-card.jpg", "/media/a.png", "/media/littlebird/a-picture.png", `/media/foundoutanyway/${SHA.slice(1)}.jpg`, `/media/foundoutanyway/${SHA.toUpperCase()}.jpg`, `/media/foundoutanyway/${SHA}-512.jpg`, `/media/foundoutanyway/sub/${SHA}.jpg`])
+    assert.equal(src(local), local, `${local} stays a site path, never rewritten`);
+  // unaffected sources: site paths other than /media/ and tiny raster data keep their behaviour
+  for (const keep of ["/thumbs/b.jpg", "/hero/h.jpg", "/works/w.png", "data:image/png;base64,iVBORw0KGgo="]) assert.equal(src(keep), keep, keep);
+  // blocked: another host, lookalikes, ports, credentials, queries, fragments, schemes, re-spelled and unsafe forms, bare door, other paths on the door
+  for (const bad of [
+    "https://evil.example/media/a.png", "https://media.postmark.town.evil.example/media/a.png", "https://evilmedia.postmark.town/media/a.png",
+    "https://postmark.town/media/a.png", "https://media.postmark.town:8443/media/a.png", "https://user@media.postmark.town/media/a.png",
+    "https://media.postmark.town/media/a.png?x=1", "https://media.postmark.town/media/a.png#f", "http://media.postmark.town/media/a.png",
+    "//media.postmark.town/media/a.png", "https://media.postmark.town/media/", "https://media.postmark.town/thumbs/a.png", "https://media.postmark.town/atlas/a.png",
+    "https://media.postmark.town/media/../a.png", "https://media.postmark.town/media/%2e%2e/a.png", "https://media.postmark.town/media/a/%2f/b.png",
+    "https://media.postmark.town\\@evil.example/media/a.png", "HTTPS://MEDIA.POSTMARK.TOWN/media/a.png", "javascript:alert(1)", "/media/../x.png", "/media/a//b.png",
+    "data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+", "/atlas/x.png",
+  ]) assert.equal(src(bad), null, `${bad} has no way in`);
+  // SVG is an image URL at the door like any other, never inline markup: the tag stays an <img> and the escaping of the value is unchanged
+  const svg = sanitizeHtml(`<img src="/media/u/${SHA}.svg" alt='"><script>x</script>'>`).html;
+  assert.match(svg, new RegExp(`^<img src="https://media\\.postmark\\.town/media/u/${SHA}\\.svg" alt="&quot;&gt;&lt;script&gt;x&lt;/script&gt;"`));
+  assert.ok(!svg.includes("<script"));
 });
 
 test("HTML: the behavior attributes pass, with their values checked; anything else named data-* does not", () => {
