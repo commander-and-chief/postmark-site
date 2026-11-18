@@ -18,15 +18,18 @@ import { pictureOf } from "@/lib/calendar.mjs";
 
 // the register's own answer: "ok" (read as served; none is KNOWN none), else unavailable/absent (never an empty list)
 const registerOk = sparksData?.read === "ok" && Array.isArray(sparksData.sparks);
-const entries = collectSparks(calendar, eventsData, registerOk ? sparksData.sparks : []);
+// DETAIL COVERAGE is the union (every event card has its page), but the GRID is the register's own rows when the register was read: an event read is not
+// filtered by the register's anonymous visibility, so it never widens the catalogue. Only when the register is unavailable is the event-carried list shown (and says so).
+const covered = collectSparks(calendar, eventsData, registerOk ? sparksData.sparks : []);
+const entries = registerOk ? covered.filter((e) => e.origin === "catalogue") : covered;
 const roll = new Set(residents.map((r) => r.handle));
 const counts = Object.fromEntries(SPARK_FILTERS.map((f) => [f.key, entries.filter(f.test).length]));
 const eventTitle = (entry) => eventOfSpark(entry, calendar, eventsData)?.event?.title ?? null;
 ---
 <PostmarkLayout
-  door={{ mcp: 'town { read: "calendar" }', get: "/api/calendar" }}
+  door={{ get: "/world2/marks?all=true&full=true" }}
   title="Sparks — Postmark"
-  description="The moments the town kept: every accepted Spark, from events and from none."
+  description="The moments the town kept: accepted Sparks in the town's public register, from events and from none."
   active="sparks"
 >
   <div class="cal-page spk" data-sparks-page>
@@ -49,7 +52,7 @@ const eventTitle = (entry) => eventOfSpark(entry, calendar, eventsData)?.event?.
               <SparkCard spark={entry.spark} roll={roll} />
               {entry.eventId !== null
                 ? <p class="spk-tag" data-spark-event>event: {eventTitle(entry) ?? entry.eventId}</p>
-                : <p class="spk-tag" data-spark-event>no event</p>}
+                : <p class="spk-tag" data-spark-event>no event named</p>}
             </div>
           ))}
         </div>

@@ -31,7 +31,7 @@ const makerHref = by ? residentHref(by, roll) : null;
 const title = typeof s.body === "string" && s.body.trim() ? s.body.trim() : "A Spark";
 ---
 <PostmarkLayout
-  door={{ mcp: 'town { read: "calendar" }', get: "/api/calendar" }}
+  door={{ get: "/world2/marks?all=true&full=true" }}
   title={`${title} — Postmark Sparks`}
   description={typeof s.recounting === "string" && s.recounting.trim() ? s.recounting.trim().slice(0, 200) : "A moment the town kept."}
   active="sparks"

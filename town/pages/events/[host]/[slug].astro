@@ -24,6 +24,7 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
 import PageFreshness from "@/components/PageFreshness.astro";
 import CalendarCard from "@/components/CalendarCard.astro";
 import SparkCard from "@/components/SparkCard.astro";
+import { CATALOGUE_WORDS } from "@/lib/sparks.mjs";
 import calendar from "@/data/postmark/calendar.json";
 import eventsData from "@/data/postmark/events.json";
 import residents from "@/data/postmark/residents.json";
@@ -183,6 +184,7 @@ const preview = handlesPreview([event.host], new Map(residents.map((r) => [r.han
           : <p class="ev-note" data-ev-note="unknown">{EVENT_WORDS.gallery.unknown}{sections.gallery.note && <> <span class="soft">({sections.gallery.note})</span></>}</p>}
         {sections.gallery.state === "known" && sections.gallery.complete === false && <p class="soft ev-basis" data-ev-complete="so-far">{EVENT_WORDS.gallery.sofar}</p>}
         {sections.gallery.state === "known" && sections.gallery.complete === null && <p class="soft ev-basis" data-ev-complete="unknown">{EVENT_WORDS.gallery.unsure}</p>}
+        <p class="ev-onward" data-ev-onward><a href="/sparks/">{CATALOGUE_WORDS.onward} →</a></p>
       </section>
     )}
 
@@ -541,6 +543,7 @@ const preview = handlesPreview([event.host], new Map(residents.map((r) => [r.han
     .ev-sec.pm-paper :global(.soft) { color: var(--pm-ink-soft); }
     .ev-sec.pm-paper :global(a) { color: var(--pm-wax); text-decoration: underline; }
     .ev-gallery { display: grid; gap: 0.2em; }
+    .ev-onward { margin: 0.8em 0 0; font-weight: 700; }
     .cal-how h2 { margin: 0 0 0.5em; font-size: 1.1em; }
     .cal-how p { margin: 0.4em 0; line-height: 1.55; }
     .cal-how pre {

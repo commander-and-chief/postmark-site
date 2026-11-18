@@ -568,15 +568,21 @@ test("BUILT: a Spark's headline is dark on its cream card (an own colour, never 
   assert.ok(guests && !guests.includes("data-spark-picture"), "no picture, no tile");
 });
 
-test("BUILT: /sparks/ lists every accepted Spark once with a whole-card link, the filters, the empty Flares place and the honest 'not complete' sentence; unaccepted references are absent", () => {
+test("BUILT: /sparks/ (register read OK) lists ONLY the register's Sparks, once each, with a whole-card link, the filters and the empty Flares place; event-carried Sparks are not relisted as global discovery; unaccepted references are absent", () => {
   const html = built("sparks");
   assert.ok(html, "/sparks/ is not built");
   const cards = cardsOf(html);
-  assert.deepEqual(cards.map((c) => /data-spark="([^"]*)"/.exec(c)[1]).sort(), [...SPARK_IDS].sort());
+  const REGISTER_IDS = ["eventless-test/lamp", "guest-test/the-pie-argument", "littlebird-test/ferry"];
+  assert.deepEqual(cards.map((c) => /data-spark="([^"]*)"/.exec(c)[1]).sort(), [...REGISTER_IDS].sort(), "the grid is the register's rows, not the union with the event reads");
+  for (const id of SPARK_IDS.filter((i) => !REGISTER_IDS.includes(i))) assert.equal(html.includes(`data-spark="${id}"`), false, `${id} is event-carried only: it has its page but is not in the register grid`);
+  assert.match(html, /For agents:/); assert.ok(html.includes("GET /world2/marks?all=true&amp;full=true") || html.includes("GET /world2/marks?all=true&full=true"), "the foot names the actual REST producer");
+  assert.equal(html.includes('read: "calendar"'), false, "and invents no MCP read");
+  assert.equal(/Every accepted Spark/i.test(textOf(html)) || /every accepted Spark/i.test(html), false, "no unconditional 'every accepted Spark' lead or meta");
   for (const c of cards) { assert.match(c, /data-spark-open/); assert.match(c, /data-spark-flares/); }
   assert.doesNotMatch(html, /harvest-supper-pending-test|withdrawn-one-test|before-the-record-test/, "a pending/withdrawn reference is not a Spark here");
   assert.match(html, /data-spark-filters/); for (const f of SPARK_FILTERS) assert.ok(html.includes(`data-filter="${f.key}"`), f.key);
-  assert.equal((html.match(/data-has-event="0"/g) ?? []).length, 4, "the eventless Sparks are drawn, the register's lamp among them");
+  assert.equal((html.match(/data-has-event="0"/g) ?? []).length, 2, "the register's eventless Sparks are drawn, the lamp among them");
+  assert.ok(textOf(html).includes("no event named"), "a missing own event tie is 'no event named', not a claim about provenance");
   assert.ok(textOf(html).includes(CATALOGUE_WORDS.register), "the page says what the list is: the public register, not every Spark");
   assert.match(html, /data-spark-register[^>]*data-state="ok"/);
   assert.equal(html.includes("hidden-test/not-listed"), false, "a Spark the public register does not carry is not invented into the list");
@@ -615,6 +621,7 @@ test("BUILT: the approved PAST layout: an ended event draws no future-tense 'Who
   assert.equal(t.includes("RSVPs closed"), false);
   assert.match(t, /RSVPs\s+3 residents/, "the recorded RSVP count stays in the card, as history");
   assert.ok(ended.includes("data-ev-present"), "who was THERE is its own section (public acts), never the RSVP list");
+  assert.match(section(ended, "data-ev-gallery"), /data-ev-onward[^>]*>\s*<a href="\/sparks\/"[^>]*>/, "the event's gallery keeps its onward row to the full /sparks/ gallery (approved mockup)");
   const live = eventHtml(LIVE);
   assert.ok(textOf(live).includes("Who is coming") && live.includes("data-rsvp"), "while it runs the page keeps its RSVP block");
 });

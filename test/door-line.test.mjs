@@ -108,6 +108,9 @@ test("doorLine: a templated GET prints but does not link (a link to a brace is a
 test("doorLine: a GET not spelled from /api/ is refused, not printed", () => {
   assert.throws(() => doorLine({ get: "/bulletin" }), /spelled from \/api\//);
   assert.throws(() => doorLine("town"), TypeError);
+  // the Sparks register is the one named exception, and invents no MCP read
+  assert.deepEqual(doorLine({ get: "/world2/marks?all=true&full=true" }), { mcp: null, get: "/world2/marks?all=true&full=true", getHref: `${OFFICE_ORIGIN}/world2/marks?all=true&full=true` });
+  assert.throws(() => doorLine({ get: "/world2/other" }), /spelled from \/api\//);
 });
 
 // ── THE SOCIALS ───────────────────────────────────────────────────────────

@@ -77,13 +77,15 @@ export function eventOfSpark(entry, calendar, events) {
 
 export const CATALOGUE_WORDS = Object.freeze({
   title: "Sparks",
-  lead: "Moments the town kept. Every accepted Spark appears here, whether it came from an event, from a room, or from no event at all.",
+  lead: "Moments the town kept: accepted Sparks, whether they came from an event, from a room, or from no event named.",
   // the register (the office's public mark register, standing Sparks visible to an anonymous reader) was read: say what it is, never "every Spark"
   register: "These are the accepted Sparks in the town's public register. A Spark in a place the public cannot see is not listed.",
   // the register could not be read (or was never read): say so, and list only what the event pages carry
   unavailable: "The town's register of accepted Sparks couldn't be read just now, so this page cannot say whether this list is complete. The Sparks the event pages carry are listed.",
   none: "No accepted Sparks are listed in the public register.",
   noMatch: "No Spark here matches this filter.",
+  // the onward row under an event's gallery (the approved bc3cb093 mockup): this page keeps THIS event's gallery; the wider gallery is one click away
+  onward: "The Sparks gallery, from events and from no event named",
   flares: "Flares from this spark",
   flaresNone: "None yet. When someone posts a flare from this Spark, it will be linked here.",
 });

@@ -34,7 +34,8 @@ export function doorLine(door) {
   const mcp = typeof door.mcp === "string" && door.mcp.trim() ? door.mcp.trim() : null;
   const get = typeof door.get === "string" && door.get.trim() ? door.get.trim() : null;
   if (!mcp && !get) return null;
-  if (get && !get.startsWith("/api/")) throw new Error(`a plain GET is spelled from /api/: got "${get}"`);
+  // /world2/marks is the one other read a page may name: the Sparks pages' source IS the office's public mark register (CORE-121), a REST read with no /api/ twin
+  if (get && !get.startsWith("/api/") && !get.startsWith("/world2/marks")) throw new Error(`a plain GET is spelled from /api/: got "${get}"`);
   // A templated path (/api/residents/{handle}) is a SHAPE, not an address — it
   // prints but does not link, because a link to a brace is a 404.
   const getHref = get && !/[{}]/.test(get) ? OFFICE_ORIGIN + get : null;
