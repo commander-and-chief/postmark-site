@@ -17,16 +17,21 @@
 //   --full was given (the build on demand);
 //   there is no previous manifest or no previous output dir, or the manifest is
 //     unreadable, or of another version;
-//   the GLOBAL KEY moved: the code (src/, town/, tools/, the Astro config, the
-//     lockfile and the installed packages, which carry the world pin), the
-//     build's PUBLIC_*/BUILD_*/PREVIEW_BASE environment, the Node major version,
-//     or the calendar switch the Halloween frame wears;
+//   the output dir is not empty (a full build may run into one, with a note; an
+//     incremental one is refused it, and this script deletes nothing: the caller
+//     hands it an empty dir);
+//   the GLOBAL KEY moved: the code (src/ minus the data, town/, tools/, the Astro
+//     config, package.json, the lockfile, tsconfig.json and the installed packages,
+//     which carry the world pin), the build's PUBLIC_*/BUILD_*/PREVIEW_BASE/
+//     TOWN_TZ/SEAM_FIXTURE environment, the Node major version, or the calendar
+//     switch the Halloween frame wears;
 //   the incremental build failed, or its output failed the checks below. It then
 //     runs the full build once more. A wrong carry-over is worse than a slow pass.
 //
 // THE CHECKS (after an incremental build): every route's files exist in the new
-// output (rendered) or in the previous release (to carry), the counts add up, and
-// nothing is carried that the previous manifest did not hold under the same key.
+// output (rendered) or in the previous release (to carry), the counts add up,
+// nothing is carried that the previous manifest did not hold under the same key,
+// and every /_astro/... file a carried page names exists in the new output.
 //
 // IT LOGS `[incremental-build] build kind: full|incremental (<reason>)` and the
 // pages rendered, and writes the same facts under `meta` in the manifest.
@@ -101,7 +106,8 @@ async function calendarSwitch(root) {
 
 export async function globalKey({ root, code }) {
   const env = Object.keys(process.env)
-    .filter((k) => /^(PUBLIC_|BUILD_)/.test(k) || k === "PREVIEW_BASE")
+    // every variable the site's own code reads while it builds (grep process.env / import.meta.env over src/, town/ and the config)
+    .filter((k) => /^(PUBLIC_|BUILD_)/.test(k) || ["PREVIEW_BASE", "TOWN_TZ", "SEAM_FIXTURE"].includes(k))
     .sort()
     .map((k) => `${k}=${process.env[k]}`);
   const installed = join(root, "node_modules", ".package-lock.json");
@@ -152,8 +158,11 @@ function loadPrev(path) {
 }
 
 /** Carry every skipped route's files over, and check the output. Throws on anything off. */
+const ASSET_REF = /\/_astro\/[^"'\s)<>?#\\]+/g;
+
 function settle({ routes, prev, prevDir, outDir, incremental }) {
   let carried = 0, rendered = 0;
+  const checked = new Set();
   for (const [family, entries] of Object.entries(routes)) {
     for (const [id, e] of Object.entries(entries)) {
       const same = incremental && prev.routes[family]?.[id]?.k === e.k;
@@ -163,13 +172,21 @@ function settle({ routes, prev, prevDir, outDir, incremental }) {
           if (!existsSync(dst)) throw new Error(`${family}: a rendered route wrote no ${f}`);
           continue;
         }
-        // Astro does not empty its outDir, so a file may already stand here from an earlier
-        // build: the carry overwrites it, never trusts it.
+        // (the build ran into an empty dir, so nothing stands here but what this build wrote or we carry)
         const src = join(prevDir, f);
         if (!existsSync(src)) throw new Error(`${family}: the previous release has no ${f} to carry`);
         mkdirSync(dirname(dst), { recursive: true });
         copyFileSync(src, dst);
         carried++;
+        // A carried page names its bundled assets by hash (/_astro/x.AbC123.js). They must exist in THIS
+        // build's output, or the page would load a file the new release does not have.
+        if (f.endsWith(".html")) {
+          for (const ref of readFileSync(dst, "utf8").match(ASSET_REF) ?? []) {
+            if (checked.has(ref)) continue;
+            if (!existsSync(join(outDir, ref))) throw new Error(`${family}: the carried ${f} names ${ref}, which this build did not write`);
+            checked.add(ref);
+          }
+        }
       }
       if (!same) rendered++;
     }
@@ -183,11 +200,14 @@ export async function main(list = process.argv.slice(2)) {
   const root = resolve(o.root ?? process.cwd());
   const config = o.config ?? "astro.config.town.mjs";
   const outDir = resolve(root, o["out-dir"] ?? "dist-town");
-  // Astro does not empty its outDir (measured), so what an earlier build left there stays, for a full
-  // build and an incremental one alike. This script deletes nothing: say it, so the caller can start clean.
+  // Astro clears an outDir's top-level files but not its folders (measured), so what an earlier build left
+  // in a sub-folder stays, for a full build and an incremental one alike. This script deletes nothing. A FULL build may run into a
+  // non-empty dir (it overwrites every route it renders; stale files of routes that no longer exist
+  // stay, as they always have, and the log says so). An INCREMENTAL build is refused one: the
+  // checks below ("a rendered route wrote its file") only mean something in an empty dir.
   const stale = existsSync(outDir) ? readdirSync(outDir).length : 0;
   if (stale) say(`note: ${outDir} already holds ${stale} entries from an earlier build; stale files of routes that no longer exist stay unless the caller starts it empty`);
-  const code = (o.code ?? "src,town,tools,astro.config.town.mjs,package.json,package-lock.json").split(",");
+  const code = (o.code ?? "src,town,tools,astro.config.town.mjs,package.json,package-lock.json,tsconfig.json").split(",");
   const started = Date.now();
 
   const g = await globalKey({ root, code });
@@ -196,6 +216,7 @@ export async function main(list = process.argv.slice(2)) {
   if (o.full) reason = "a full build was asked for";
   else if (!o["prev-manifest"] || !o["prev-dir"]) reason = "there is no previous release to carry from";
   else if (!existsSync(o["prev-dir"])) reason = "the previous release's output is not there";
+  else if (stale) reason = `the output dir is not empty (${stale} entries): an incremental build needs an empty one, and this script deletes nothing`;
   else {
     const p = loadPrev(o["prev-manifest"]);
     if (p.why) reason = p.why;

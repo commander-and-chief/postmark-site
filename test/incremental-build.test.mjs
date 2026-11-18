@@ -16,7 +16,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,9 +38,11 @@ const base = () => [
 ];
 const setData = (threads) => writeFileSync(DATA, JSON.stringify(threads));
 
-function build(label, { prev = null, full = false, env = {}, code = CODE } = {}) {
+function build(label, { prev = null, full = false, env = {}, code = CODE, dirty = false } = {}) {
   const manifest = join(WORK, `${label}.manifest.json`);
-  const out = join(WORK, `${label}.dist`); // a folder no build has touched: Astro does not empty its outDir
+  const out = join(WORK, `${label}.dist`); // a folder no build has touched: Astro clears an outDir's files, not its sub-folders
+  // a file in a sub-folder, as an earlier build leaves them: Astro clears an outDir's top-level files, not its folders (measured)
+  if (dirty) { mkdirSync(join(out, "t", "gone"), { recursive: true }); writeFileSync(join(out, "t", "gone", "index.html"), "stale"); }
   const args = [SCRIPT, "--root", FIXTURE, "--config", "astro.config.mjs", "--out-dir", out, "--code", code, "--out-manifest", manifest];
   if (prev) args.push("--prev-manifest", prev.manifest, "--prev-dir", prev.dir);
   if (full) args.push("--full");
@@ -183,4 +185,57 @@ test("a change to the code moves the global key: the next build is full", () => 
   const moved = build("code-c", { prev: first, code });
   assert.equal(moved.meta.kind, "full");
   assert.match(moved.meta.reason, /global key moved/);
+});
+
+test("every variable the site's code reads while it builds moves the global key (PUBLIC_*, BUILD_*, TOWN_TZ, SEAM_FIXTURE, PREVIEW_BASE)", () => {
+  setData(base());
+  for (const env of [{ PUBLIC_X: "1" }, { BUILD_CROSSING: "318" }, { TOWN_TZ: "UTC" }, { SEAM_FIXTURE: "1" }, { PREVIEW_BASE: "/preview/x/" }]) {
+    const name = Object.keys(env)[0];
+    const r = build(`env-${name}`, { prev: full1, env });
+    assert.equal(r.meta.kind, "full", `${name} did not move the global key`);
+    assert.match(r.meta.reason, /global key moved/);
+  }
+  // control: a variable the site never reads does not
+  assert.equal(build("env-none", { prev: full1, env: { SOMETHING_ELSE: "1" } }).meta.kind, "incremental");
+});
+
+test("a dirty output dir: an incremental build is refused it (full instead, with the reason); a full build may run in it", () => {
+  setData(base());
+  const dirtyInc = build("dirty-inc", { prev: full1, dirty: true });
+  assert.equal(dirtyInc.meta.kind, "full");
+  assert.match(dirtyInc.meta.reason, /output dir is not empty/);
+  assert.match(dirtyInc.log, /already holds 1 entries/);
+  const dirtyFull = build("dirty-full", { full: true, dirty: true });
+  assert.equal(dirtyFull.meta.kind, "full");
+  assert.match(dirtyFull.meta.reason, /full build was asked for/);
+  assert.ok(existsSync(join(dirtyFull.dir, "t", "gone", "index.html")), "the script deleted a file it did not make");
+  // and into an empty one the same previous release is carried from (control)
+  assert.equal(build("dirty-ctl", { prev: full1 }).meta.kind, "incremental");
+});
+
+test("a carried page that names an /_astro file the new build did not write is refused: full instead", () => {
+  setData(base());
+  const ghost = join(WORK, "ghost.dist");
+  cpSync(full1.dir, ghost, { recursive: true });
+  const page = join(ghost, "t", "b", "index.html");
+  writeFileSync(page, readFileSync(page, "utf8").replace("</body>", '<script src="/_astro/ghost.AbC123.js"></script></body>'));
+  const r = build("ghost-run", { prev: { manifest: full1.manifest, dir: ghost } });
+  assert.equal(r.meta.kind, "full");
+  assert.match(r.meta.reason, /did not hold.*ghost\.AbC123\.js/);
+});
+
+test("a read hidden in a converted page's component is caught: the byte-compare goes red (the proof has teeth)", () => {
+  // FIXTURE_HIDDEN=1 makes Count.astro show how many threads exist, a fact no route's props carry.
+  const env = { FIXTURE_HIDDEN: "1" };
+  setData(base());
+  const prev = build("hid-prev", { full: true, env });
+  setData([...base(), { slug: "g", title: "Eta", body: "seventh" }]);
+  const inc = build("hid-inc", { prev, env });
+  const ref = build("hid-ref", { full: true, env });
+  assert.equal(inc.meta.kind, "incremental", "the key cannot see the hidden read, which is the point");
+  const { diffs } = compareDirs(inc.dir, ref.dir);
+  assert.ok(diffs.includes("bytes differ: t/a/index.html"), `the stale carried page was not caught:\n${diffs.join("\n")}`);
+  assert.match(readFileSync(join(inc.dir, "t", "a", "index.html"), "utf8"), /6 threads/);
+  assert.match(readFileSync(join(ref.dir, "t", "a", "index.html"), "utf8"), /7 threads/);
+  // the page graph test (test/incremental-pages.test.mjs) is what stops this in the real site; this case proves the compare itself can see it
 });

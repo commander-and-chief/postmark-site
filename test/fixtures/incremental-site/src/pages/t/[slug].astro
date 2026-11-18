@@ -1,5 +1,6 @@
 ---
 import { threadPaths } from "../../routes.mjs";
+import Count from "../../Count.astro";
 
 export function getStaticPaths() {
   return threadPaths();
@@ -13,6 +14,7 @@ const { title, body, next } = Astro.props;
     <h1>{title}</h1>
     <p class="body">{body}</p>
     {next && <p class="next">next: {next}</p>}
+    <Count />
     <script>
       console.log("a thread page");
     </script>

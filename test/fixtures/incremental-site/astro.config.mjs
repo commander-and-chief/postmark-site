@@ -5,5 +5,5 @@ import { defineConfig } from "astro/config";
 
 export default defineConfig({
   srcDir: "src",
-  outDir: process.env.FIXTURE_OUT || "dist", // the test gives every build its own empty folder (Astro does not empty an outDir)
+  outDir: process.env.FIXTURE_OUT || "dist", // the test gives every build its own empty folder (Astro clears an outDir's files, not its sub-folders)
 });
