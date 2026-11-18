@@ -13,7 +13,8 @@
 //                copied: it is not that they are searched for, it is that only
 //                the listed names are ever written.
 //   urls         `a href`: https only, or a site path; `img src`: a site media
-//                path or a small data image. `javascript:`, `data:text/html` and
+//                path (a `/media/…` one is resolved to the town's media host, POS-1113), an absolute URL at exactly that host, or a
+//                small data image. `javascript:`, `data:text/html` and
 //                a scheme split by a control character have no way through.
 //
 // Every text node and every attribute value is escaped on the way out, and tag
@@ -28,6 +29,7 @@
 // (sanitize-css.mjs), so a template cannot land on, or be styled by, the site's.
 
 import { SLOT_TAGS, BEHAVIOR_NAMES, LIMITS } from "./slots.mjs";
+import { TOWN_MEDIA_HOST, atTownMediaDoor } from "../media-door.mjs";
 
 export const CLASS_PREFIX = "u-";
 
@@ -64,7 +66,11 @@ const TAG_ATTRS = {
 const SORT_KEY = /^[a-z][a-z0-9-]{0,15}$/;
 
 const IMG_PATH = /^\/(?:media|thumbs|hero|works)\/(?!.*(?:\.\.|%2e|%2f|%5c|\/\/))[A-Za-z0-9_./%-]{1,200}$/i;
-const IMG_DATA = /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]{1,20000}={0,2}$/;
+// The producer's stored-object shape for a household upload (Office media.mjs: media/<household>/<sha256>[-96|-256].<ext>). ONLY this shape is a
+// household upload that lives at the media host. A flat `/media/<file>` (the site's own art under public/atelier/postmark/media, e.g.
+// /media/aion-solare-aelyria-region-card.jpg) is a site path and stays local, as do /thumbs/, /hero/ and /works/.
+const HOUSEHOLD_UPLOAD = /^\/media\/[A-Za-z0-9][A-Za-z0-9._-]*\/[0-9a-f]{64}(?:-(?:96|256))?\.[a-z0-9]{1,8}$/;
+const IMG_DATA =/^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]{1,20000}={0,2}$/;
 const HTTPS = /^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?(?:[/?#][^\s"'<>`\\]*)?$/;
 const SITE_PATH = /^\/(?!\/)[A-Za-z0-9_./%?#=&+~-]{0,300}$/;
 
@@ -228,10 +234,23 @@ function keepAttr(tag, a, problems) {
       if (SITE_PATH.test(value)) return [name, value];
       problems.add("url:href");
       return null;
-    case "src":
+    case "src": {
+      // THE TOWN'S MEDIA DOOR (POS-1113, postmark#4752). Uploaded pictures are served from the media host, not from postmark.town, so a
+      // `/media/<household>/<object>` path written in a template would 404 on the site. A path of that producer shape therefore gains the
+      // canonical media origin (the author rewrites nothing), while a flat `/media/<file>` stays a site path; and the same picture written as an absolute URL at that exact origin is kept. Nothing else widens:
+      // another host, a port, credentials, a query or fragment, a spoofed or re-spelled URL and an unsafe path all fall through to "no src".
+      // `/thumbs/`, `/hero/` and `/works/` keep their current site-path behaviour, and data images keep their tiny raster rule. An image is
+      // only ever an <img src>: SVG is never inlined and gets no data exception here.
+      if (HOUSEHOLD_UPLOAD.test(value) && IMG_PATH.test(value)) return [name, `https://${TOWN_MEDIA_HOST}${value}`];
       if (IMG_PATH.test(value) || IMG_DATA.test(value)) return [name, value];
+      if (atTownMediaDoor(value)) {
+        let url;
+        try { url = new URL(value); } catch { url = null; }
+        if (url && url.pathname.startsWith("/media/") && IMG_PATH.test(url.pathname) && value === `https://${TOWN_MEDIA_HOST}${url.pathname}`) return [name, value];
+      }
       problems.add("url:src");
       return null;
+    }
     case "width": case "height": return /^\d{1,4}$/.test(value) ? [name, value] : null;
     case "colspan": case "rowspan": case "start": return /^\d{1,3}$/.test(value) ? [name, value] : null;
     case "scope": return /^(row|col|rowgroup|colgroup)$/.test(value) ? [name, value] : null;
