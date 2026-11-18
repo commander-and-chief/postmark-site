@@ -90,6 +90,21 @@ test("one rail, both hosts: the pill sits after the resident chips and the entry
   assert.match(read("town/components/Household.astro"), /querySelectorAll\("\[data-house-add\], \[data-house-human-edit\]"\)/, "resident page: the owner check shows it");
 });
 
+test("a long accepted profile WRAPS inside the pill and never widens the row: 56 pronoun characters on a phone (CORE-115 review)", () => {
+  assert.equal(HUMAN_PROFILE_CAPS.pronouns, 56);
+  const css = read("src/components/HouseRail.astro");
+  const rule = (sel) => { const m = css.match(new RegExp(`\\n\\s*${sel.replace(/[.]/g, "\\.")}\\s*\\{([^}]*)\\}`)); assert.ok(m, `the rail styles ${sel}`); return m[1]; };
+  const pill = rule(".pm-human"), name = rule(".pm-human-name"), pro = rule(".pm-human-pro");
+  assert.match(pill, /flex-wrap:\s*wrap/, "the pill wraps its parts, so it grows taller, not wider");
+  assert.match(pill, /max-width:\s*100%/); assert.match(pill, /min-width:\s*0/);
+  assert.match(pro, /white-space:\s*normal/, "pronouns are not nowrap");
+  assert.match(pro, /overflow-wrap:\s*anywhere/, "a 56-character run with no space still breaks");
+  assert.match(pro, /min-width:\s*0/);
+  assert.match(name, /flex-shrink:\s*0/, "the town name does not collapse to nothing under a long pronoun run");
+  assert.match(name, /max-width:\s*100%/, "and is bounded by the pill, not wider than the row");
+  assert.ok(!/white-space:\s*nowrap/.test(pill + name + pro), "no nowrap anywhere in the pill");
+});
+
 test("the site writes nothing: no POST, key or token reaches the profile, and the link is the office's form", () => {
   const files = ["src/components/HouseRail.astro", "src/lib/human-profile.mjs"].map(read).join("\n");
   assert.ok(!/fetch\(|method:\s*["']P|authorization|Bearer|localStorage/i.test(files), "no write path, no token");

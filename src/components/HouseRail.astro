@@ -141,14 +141,16 @@ const entry = humanEntry(house);
   /* the house's human (CORE-115): a pill after the resident chips, the chosen town name and pronouns, the chosen short line its tooltip (shown on hover AND
      keyboard focus, and a tap on a phone, since the pill takes focus). Plain text, the height of a chip's face. */
   .pm-human {
-    position: relative; display: inline-flex; align-items: center; gap: 0.45em; flex: none; max-width: 100%; box-sizing: border-box;
-    min-height: 34px; padding: 0 0.9em;
-    color: #f6dcae; background: rgba(13, 20, 38, 0.6); border: 1px solid rgba(232, 196, 139, 0.45); border-radius: 999px;
+    position: relative; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.1em 0.45em; flex: none; max-width: 100%; min-width: 0; box-sizing: border-box;
+    min-height: 34px; padding: 0.3em 0.9em;
+    color: #f6dcae; background: rgba(13, 20, 38, 0.6); border: 1px solid rgba(232, 196, 139, 0.45); border-radius: 17px;
     cursor: default;
   }
+  /* the Office accepts up to 56 characters of pronouns (and 72 of a town name): they WRAP inside the pill, and the name keeps its place, so a long
+     accepted line makes the pill taller, never wider than the row (CORE-115 review: the phone at 360/390 scrolled sideways and the name collapsed) */
   .pm-human:focus-visible { outline: 2px solid #e8c48b; outline-offset: 2px; }
-  .pm-human-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 16em; }
-  .pm-human-pro { font: 400 0.8rem/1 var(--pm-mono); color: rgba(255, 244, 215, 0.7); white-space: nowrap; }
+  .pm-human-name { flex-shrink: 0; min-width: 0; font-weight: 600; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+  .pm-human-pro { min-width: 0; font: 400 0.8rem/1.25 var(--pm-mono); color: rgba(255, 244, 215, 0.7); white-space: normal; overflow-wrap: anywhere; }
   .pm-human-tip {
     position: absolute; z-index: 20; left: 0; top: calc(100% + 6px); width: max-content; max-width: min(24rem, 86vw);
     padding: 0.5em 0.8em; border-radius: 10px; font-size: 0.9rem; line-height: 1.35; white-space: normal; overflow-wrap: anywhere;
@@ -156,7 +158,6 @@ const entry = humanEntry(house);
     visibility: hidden; opacity: 0; transition: opacity 0.12s ease;
   }
   .pm-human:hover .pm-human-tip, .pm-human:focus .pm-human-tip, .pm-human:focus-within .pm-human-tip { visibility: visible; opacity: 1; }
-  @media (max-width: 540px) { .pm-human-name { max-width: 10em; } }
   /* the owner's way into the office's form: shipped hidden, shown to the house's own human like the "+" (a dashed pill, not a chip) */
   .pm-subrail-human {
     display: inline-flex; align-items: center; flex: none; min-height: 34px; padding: 0 0.9em; box-sizing: border-box; border-radius: 999px;
