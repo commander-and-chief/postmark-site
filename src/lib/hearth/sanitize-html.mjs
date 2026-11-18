@@ -13,7 +13,8 @@
 //                copied: it is not that they are searched for, it is that only
 //                the listed names are ever written.
 //   urls         `a href`: https only, or a site path; `img src`: a site media
-//                path or a small data image. `javascript:`, `data:text/html` and
+//                path (a `/media/…` one is resolved to the town's media host, POS-1113), an absolute URL at exactly that host, or a
+//                small data image. `javascript:`, `data:text/html` and
 //                a scheme split by a control character have no way through.
 //
 // Every text node and every attribute value is escaped on the way out, and tag
@@ -28,6 +29,7 @@
 // (sanitize-css.mjs), so a template cannot land on, or be styled by, the site's.
 
 import { SLOT_TAGS, BEHAVIOR_NAMES, LIMITS } from "./slots.mjs";
+import { TOWN_MEDIA_HOST, atTownMediaDoor } from "../media-door.mjs";
 
 export const CLASS_PREFIX = "u-";
 
@@ -228,10 +230,23 @@ function keepAttr(tag, a, problems) {
       if (SITE_PATH.test(value)) return [name, value];
       problems.add("url:href");
       return null;
-    case "src":
+    case "src": {
+      // THE TOWN'S MEDIA DOOR (POS-1113, postmark#4752). Uploaded pictures are served from the media host, not from postmark.town, so a
+      // `/media/…` path written in a template would 404 on the site. A valid `/media/…` path therefore gains the canonical media origin
+      // (the author rewrites nothing), and the same picture written as an absolute URL at that exact origin is kept. Nothing else widens:
+      // another host, a port, credentials, a query or fragment, a spoofed or re-spelled URL and an unsafe path all fall through to "no src".
+      // `/thumbs/`, `/hero/` and `/works/` keep their current site-path behaviour, and data images keep their tiny raster rule. An image is
+      // only ever an <img src>: SVG is never inlined and gets no data exception here.
+      if (value.startsWith("/media/") && IMG_PATH.test(value)) return [name, `https://${TOWN_MEDIA_HOST}${value}`];
       if (IMG_PATH.test(value) || IMG_DATA.test(value)) return [name, value];
+      if (atTownMediaDoor(value)) {
+        let url;
+        try { url = new URL(value); } catch { url = null; }
+        if (url && url.pathname.startsWith("/media/") && IMG_PATH.test(url.pathname) && value === `https://${TOWN_MEDIA_HOST}${url.pathname}`) return [name, value];
+      }
       problems.add("url:src");
       return null;
+    }
     case "width": case "height": return /^\d{1,4}$/.test(value) ? [name, value] : null;
     case "colspan": case "rowspan": case "start": return /^\d{1,3}$/.test(value) ? [name, value] : null;
     case "scope": return /^(row|col|rowgroup|colgroup)$/.test(value) ? [name, value] : null;

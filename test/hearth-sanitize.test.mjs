@@ -134,9 +134,34 @@ test("HTML: links are https or a site path, opened in place with rel noopener no
   assert.match(html, /<a href="https:\/\/example.org\/a\?b=c#d" rel="noopener noreferrer nofollow ugc">ok<\/a>/);
   assert.match(html, /<a href="\/residents\/x\/" rel=/);
   assert.ok(!html.includes("mailto:") && !html.includes("tel:"));
-  assert.match(html, /<img src="\/media\/a.png" alt="a" width="10" height="20" loading="lazy" decoding="async">/);
+  assert.match(html, /<img src="https:\/\/media\.postmark\.town\/media\/a.png" alt="a" width="10" height="20" loading="lazy" decoding="async">/, "a /media/ path is resolved to the town's media host");
   assert.ok(html.includes('src="/thumbs/b.jpg"') && html.includes("data:image/png;base64,iVBORw0KGgo="));
   assert.ok(!html.includes("/atlas/x.png") && !html.includes("../"), "an image outside the media paths has no way in");
+});
+
+test("HTML (POS-1113, postmark#4752): the original relative /media/ source emits a working media-host URL, the absolute one survives, and nothing else widens", () => {
+  const src = (input) => { const m = /<img src="([^"]*)"/.exec(sanitizeHtml(`<img src="${input}">`).html); return m ? m[1] : null; };
+  const H = "https://media.postmark.town";
+  // the report: the same path the rules told her to write, which 404s on postmark.town
+  assert.equal(src("/media/littlebird/a-picture.png"), `${H}/media/littlebird/a-picture.png`, "the original relative input now works with no author rewrite");
+  assert.equal(src(`${H}/media/littlebird/a-picture.png`), `${H}/media/littlebird/a-picture.png`, "the equivalent absolute URL survives");
+  assert.equal(src("/media/a%20b.png"), `${H}/media/a%20b.png`);
+  // unaffected sources: site paths other than /media/ and tiny raster data keep their behaviour
+  for (const keep of ["/thumbs/b.jpg", "/hero/h.jpg", "/works/w.png", "data:image/png;base64,iVBORw0KGgo="]) assert.equal(src(keep), keep, keep);
+  // blocked: another host, lookalikes, ports, credentials, queries, fragments, schemes, re-spelled and unsafe forms, bare door, other paths on the door
+  for (const bad of [
+    "https://evil.example/media/a.png", "https://media.postmark.town.evil.example/media/a.png", "https://evilmedia.postmark.town/media/a.png",
+    "https://postmark.town/media/a.png", "https://media.postmark.town:8443/media/a.png", "https://user@media.postmark.town/media/a.png",
+    "https://media.postmark.town/media/a.png?x=1", "https://media.postmark.town/media/a.png#f", "http://media.postmark.town/media/a.png",
+    "//media.postmark.town/media/a.png", "https://media.postmark.town/media/", "https://media.postmark.town/thumbs/a.png", "https://media.postmark.town/atlas/a.png",
+    "https://media.postmark.town/media/../a.png", "https://media.postmark.town/media/%2e%2e/a.png", "https://media.postmark.town/media/a/%2f/b.png",
+    "https://media.postmark.town\\@evil.example/media/a.png", "HTTPS://MEDIA.POSTMARK.TOWN/media/a.png", "javascript:alert(1)", "/media/../x.png", "/media/a//b.png",
+    "data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+", "/atlas/x.png",
+  ]) assert.equal(src(bad), null, `${bad} has no way in`);
+  // SVG is an image URL at the door like any other, never inline markup: the tag stays an <img> and the escaping of the value is unchanged
+  const svg = sanitizeHtml(`<img src="/media/u/logo.svg" alt='"><script>x</script>'>`).html;
+  assert.match(svg, /^<img src="https:\/\/media\.postmark\.town\/media\/u\/logo\.svg" alt="&quot;&gt;&lt;script&gt;x&lt;\/script&gt;"/);
+  assert.ok(!svg.includes("<script"));
 });
 
 test("HTML: the behavior attributes pass, with their values checked; anything else named data-* does not", () => {
