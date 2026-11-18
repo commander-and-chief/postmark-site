@@ -107,7 +107,8 @@ test("doorLine: a templated GET prints but does not link (a link to a brace is a
 
 test("doorLine: a GET not spelled from /api/ is refused, not printed", () => {
   assert.throws(() => doorLine({ get: "/bulletin" }), /spelled from \/api\//);
-  assert.throws(() => doorLine("town"), TypeError);});
+  assert.throws(() => doorLine("town"), TypeError);
+});
 
 // ── THE SOCIALS ───────────────────────────────────────────────────────────
 
