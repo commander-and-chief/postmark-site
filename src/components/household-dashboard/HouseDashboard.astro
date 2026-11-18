@@ -58,7 +58,7 @@ const facesByHandle = Object.fromEntries(faces.map((f) => [f.handle, {
   name: f.name, accent: f.accent, avatar: f.avatar, monogram: f.monogram, windowHung: f.windowHung,
 }]));
 ---
-<section class="hd" data-hd data-hd-view="public" data-hd-slug={slug} aria-label={`${plate}, the household`}>
+<section class="hd" data-hd data-hd-view="public" data-hd-slug={slug} data-hd-key={house.slug ?? ""} aria-label={`${plate}, the household`}>
   <script type="application/json" data-hd-faces set:html={JSON.stringify({ handles, faces: facesByHandle }).replace(/</g, "\\u003c")} />
 
   {/* ═════════ THE HOUSE ═════════ */}
@@ -219,6 +219,8 @@ const facesByHandle = Object.fromEntries(faces.map((f) => [f.handle, {
     const handles: string[] = data.handles ?? [];
     const faces = data.faces ?? {};
     const slug = root.dataset.hdSlug || handles.join("+");
+    // the registry's key, which the office's one house read asks by; `slug` is the page's path, which for a long-keyed house is not it
+    const houseKey = root.dataset.hdKey || slug;
     const seatHref = (h: string) => root.dataset.hdSlug
       ? "/households/" + root.dataset.hdSlug + "/?resident=" + encodeURIComponent(h)
       : "/residents/" + encodeURIComponent(h) + "/";
@@ -264,8 +266,8 @@ const facesByHandle = Object.fromEntries(faces.map((f) => [f.handle, {
       const key = own.join(",");
       if (reads && key === readFor) { draw(); return; }
       readFor = key;
-      // the bearer rides only the doorsteps of the reader's own residents
-      reads = await readHouse(handles, { token: own.length ? token() : null, mine: own });
+      // the bearer rides only the one house read, and only for a reader whose sign-in holds one of its residents
+      reads = await readHouse(handles, { key: houseKey, token: own.length ? token() : null, mine: own });
       draw();
     }
 
