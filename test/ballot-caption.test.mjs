@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { titlesOf, readTitles, captionOf, captionsOf } from "../src/lib/hearth/ballot-caption.mjs";
 import { previewHrefs, HEARTH_BALLOT_TOPIC } from "../src/lib/hearth/ballot-links.mjs";
 import { panelHtml } from "../src/lib/ballot-panel.mjs";
-import { mountBallotStake, answerOf, nameFor } from "../src/lib/ballot-stake.mjs";
+import { mountBallotStake, answerOf, nameFor, BALLOT_STAKE_CSS } from "../src/lib/ballot-stake.mjs";
 
 const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
 
@@ -123,6 +123,10 @@ test("the choice control and the site's own preview / receipt words show the cap
   for (const p of posts) assert.equal(p.body.args.candidate, "lantern-glow", "the preview and confirm request carry the id");
   assert.ok(out.textContent.includes(`on ${CAPTION}`), "the receipt names the caption");
   assert.equal(out.textContent.includes("on lantern-glow"), false, "and not the folder id");
+});
+
+test("a long caption in the choice control cannot push the form past its column (the row is capped at its container, phone width)", () => {
+  assert.match(BALLOT_STAKE_CSS, /\.bs \.bs-row \{[^}]*max-width: 100%;[^}]*min-width: 0;/);
 });
 
 test("a bare call (no captions) and an unknown design are exactly today's words", async () => {

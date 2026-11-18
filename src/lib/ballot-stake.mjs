@@ -190,7 +190,7 @@ export const BALLOT_STAKE_CSS = `
 .bs .bs-gate { font-size: 0.82rem; opacity: 0.78; margin: 0 0 0.6em; }
 .bs .bs-form { display: flex; flex-wrap: wrap; gap: 0.5em 0.9em; align-items: flex-end; }
 .bs .bs-form[hidden] { display: none; }
-.bs .bs-row { display: flex; flex-direction: column; gap: 0.25em; margin: 0; font-size: 0.82rem; }
+.bs .bs-row { display: flex; flex-direction: column; gap: 0.25em; margin: 0; font-size: 0.82rem; max-width: 100%; min-width: 0; }
 .bs .bs-row select, .bs .bs-row input { font: inherit; font-size: 0.9rem; padding: 0.35em 0.5em; min-width: 7em; max-width: 100%; }
 .bs .bs-row input { width: 6em; min-width: 0; }
 .bs button { font: 0.78rem/1 var(--pm-mono, monospace); padding: 0.6em 1em; border-radius: 999px; cursor: pointer; }
