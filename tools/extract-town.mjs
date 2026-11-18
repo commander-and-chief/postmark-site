@@ -212,7 +212,8 @@ try {
 // The declared household registry (2026-08-07), as the STORE holds it (POS-345):
 // the office's public GET {POSTMARK_API}/households answers `registry` in
 // tools/households.json's own shape, and this writes it to households.json
-// verbatim. The town's tools/households.json is only the store's printout, so
+// as it is, less the one private key of a house, `human` (emit drops it, through
+// tools/lib/public-registry.mjs: this repo is public). The town's tools/households.json is only the store's printout, so
 // the build no longer reads it from the checkout. The site reads the registry
 // for static nameplates and for the wrapper's member tabs; the live
 // per-resident answer stays the office's household block on GET
