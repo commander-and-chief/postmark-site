@@ -35,6 +35,7 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readTown } from "./lib/town.mjs";
 import { refuseLinkedCheckout } from "./lib/plain-checkout.mjs";
+import { publicRegistry } from "./lib/public-registry.mjs";
 import { emitSeam } from "./extract-seam.mjs";
 import { threadTitle } from "./lib/ids.mjs";
 import { letterAddresses, letterHref } from "../src/lib/mail.mjs";
@@ -148,6 +149,8 @@ mkdirSync(DATA_DIR, { recursive: true });
 mkdirSync(PUB_DATA, { recursive: true });
 const pubWanted = new Set(["doorstep", "index.json"]);
 const emit = (name, value) => {
+  // The registry is committed and served, in a public repo: only its public keys are written (CORE-125).
+  if (name === "households.json") value = publicRegistry(value);
   const text = JSON.stringify(value, null, 1) + "\n";
   const r = writeIfChanged(join(DATA_DIR, name), text);
   writeIfChanged(join(PUB_DATA, name), text);
