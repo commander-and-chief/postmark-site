@@ -74,31 +74,48 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // ── a fake office: answers by path, can hold a door shut until released, can fail one ───────────────
 
 const HANDLES = ["a", "b", "c", "d"];
+const KEY = "the-house";
+const HOUSE_PATH = `/household?read=house&household=${KEY}&full=true`;
 const gate = () => { let go; const p = new Promise((r) => { go = r; }); return { p, go }; };
 const until = async (cond, what) => {
   for (let i = 0; i < 2000; i++) { if (cond()) return; await new Promise((r) => setImmediate(r)); }
   throw new Error("never happened: " + what);
 };
 
-function office({ held = {}, down = [] } = {}) {
+// The office's one house answer (office house-bundle.mjs): `c` is DECLARED but not ashore, so it has no `residents` entry and still has its
+// public companions; each resident's own figures differ from the house's blocks, which ride once at the top. Every name here is invented.
+const AGG = () => ({
+  read: "house", household: KEY, next_crossing: { crossing: 216, at: "2026-11-17T12:00:00.000Z" },
+  stakes: { scope: ["a", "b", "d"], at_risk: 3, next_settlement: { at: "2026-11-17T12:00:00.000Z" } },
+  outcomes: { scope: ["a", "b", "d"], events: [{ yours: true, kind: "mark-locked", mark: "a/lamp", at: "2026-11-16T09:00:00.000Z" }] },
+  residents: {
+    a: { handle: "a", stamps: { assets: 3 }, stances: { stances_awaiting: 2 }, holds: { holds: { count: 1, shows: "a lamp" } } },
+    b: { handle: "b", stamps: { assets: 5 }, stances: { stances_awaiting: 0 } },
+    d: { handle: "d", stamps: { assets: 7 }, stances: { stances_awaiting: 1 } },
+  },
+  outboxes: { a: [{ id: "l1" }], b: [], c: [{ id: "l2" }], d: [] },
+  quests: { a: { quests: [] }, b: { quests: [] }, c: { quests: [] }, d: { quests: [] } },
+});
+
+function office({ held = {}, down = [], agg = AGG() } = {}) {
   const calls = [];
-  const fetchImpl = async (url) => {
+  const auth = {};
+  const fetchImpl = async (url, init = {}) => {
     const u = new URL(url);
     const path = u.pathname.replace(/^\/api(?=\/)/, "") + u.search;
     calls.push(path);
+    auth[path] = init.headers?.authorization ?? null;
     if (held[path]) await held[path].p;
     if (down.includes(path)) return { ok: false, status: 500, json: async () => ({ error: "down" }) };
-    let m, body;
-    if ((m = /^\/doorstep\/(\w+)$/.exec(path))) body = { handle: m[1], stamps: { assets: 3 } };
-    else if (/^\/mail\/\w+\?box=outbox$/.test(path)) body = [];
-    else if (/^\/quests\/\w+$/.test(path)) body = { quests: [] };
+    let body;
+    if (path === HOUSE_PATH) body = agg;
     else if (path === "/world/walkers") body = { walkers: [] };
     else if (path === "/world/conversations") body = { live: [], closed: [] };
     else if (path === "/calendar") body = { now: [], coming: [] };
     else return { ok: false, status: 404, json: async () => ({}) };
     return { ok: true, status: 200, json: async () => body };
   };
-  return { fetchImpl, calls };
+  return { fetchImpl, calls, auth };
 }
 
 async function withFetch(fetchImpl, fn) {
@@ -109,67 +126,101 @@ async function withFetch(fetchImpl, fn) {
 
 // ── § 1 ─────────────────────────────────────────────────────────────────────
 
-test("§ 1 a resident whose doorstep is late does not hold the others back, and a failed one does not block either", async () => {
-  // LAW (POS-984, Wright 2026-11-10): "paints what it has as each resident's reads arrive ... a failed read for one resident shows that
-  // resident as not read and never blocks the rest."
+test("§ 1 CORE-113: the house is FOUR requests, the one aggregate and the three town-wide reads, however many residents it has", async () => {
+  const { fetchImpl, calls } = office();
+  await withFetch(fetchImpl, () => readHouse(HANDLES, { key: KEY, onProgress: () => {} }));
+  assert.deepEqual([...calls].sort(), [HOUSE_PATH, "/calendar", "/world/conversations", "/world/walkers"].sort(),
+    "no per-resident doorstep, outbox or quest read is made, and none is made again as a fallback");
+  const nine = Array.from({ length: 9 }, (_, i) => "r" + i);
+  const big = office();
+  await withFetch(big.fetchImpl, () => readHouse(nine, { key: KEY }));
+  assert.equal(big.calls.length, 4, "nine residents are still four requests (it was 3 x 9 + 3 = 30)");
+});
+
+test("§ 1 the aggregate is projected into the per-resident maps the page folds: each resident's own, the house's blocks once, the declared-but-not-ashore kept", async () => {
+  const { fetchImpl } = office();
+  const r = await withFetch(fetchImpl, () => readHouse(HANDLES, { key: KEY }));
+  assert.deepEqual([r.pending, r.waiting], [[], []]);
+  for (const k of ["doorsteps", "outboxes", "quests"]) assert.deepEqual(Object.keys(r[k]), HANDLES, k + " in the house's own order");
+  // each resident's OWN figures stay their own
+  assert.equal(r.doorsteps.a.stamps.assets, 3);
+  assert.equal(r.doorsteps.b.stamps.assets, 5);
+  assert.deepEqual([r.doorsteps.a.stances, r.doorsteps.b.stances, r.doorsteps.d.stances].map((s) => s.stances_awaiting), [2, 0, 1], "own waiting-stance counts, never the house's");
+  assert.equal(r.doorsteps.a.holds.holds.shows, "a lamp", "holdings ride the resident that holds them");
+  assert.ok(!("holds" in r.doorsteps.b), "and are not invented for one that holds none");
+  assert.deepEqual(r.doorsteps.d.next_crossing, { crossing: 216, at: "2026-11-17T12:00:00.000Z" }, "the town's clock rides every doorstep, as it always did");
+  // the HOUSE's blocks ride once, on the first resident the office holds, under the doorstep's names, and keep their own scope
+  assert.equal(r.doorsteps.a.stakes.at_risk, 3);
+  assert.deepEqual(r.doorsteps.a.stakes.scope, ["a", "b", "d"], "a house total that says it is the house's");
+  assert.equal(r.doorsteps.a.outcomes.events.length, 1);
+  for (const h of ["b", "d"]) assert.ok(!("stakes" in r.doorsteps[h]) && !("outcomes" in r.doorsteps[h]), `${h} does not repeat the house total as its own`);
+  // c is declared but not ashore: no doorstep, and the public companions it still has
+  assert.equal(r.doorsteps.c, null);
+  assert.deepEqual(r.outboxes.c, [{ id: "l2" }]);
+  assert.deepEqual(r.quests.c, { quests: [] });
+  // the folds that add resident figures get the house's total ONCE, not once per resident
+  const { clocksOf, needsOf } = await import("../src/lib/household-dashboard/fold.mjs");
+  assert.equal(clocksOf(HANDLES, r.doorsteps).settlement.atRisk, 3, "3 at risk, not 3 x 3");
+  assert.equal(needsOf(HANDLES, r.doorsteps).atRisk, 3);
+  assert.deepEqual(needsOf(HANDLES, r.doorsteps).stances.by, [{ handle: "a", n: 2 }, { handle: "d", n: 1 }]);
+});
+
+test("§ 1 the aggregate and the town-wide reads land on their own; nobody is pending once it settles, and the page need not wait for the slow one", async () => {
   const slow = gate();
-  const { fetchImpl } = office({ held: { "/doorstep/b": slow }, down: ["/doorstep/c"] });
+  const { fetchImpl } = office({ held: { [HOUSE_PATH]: slow } });
   await withFetch(fetchImpl, async () => {
-    const order = [];
     const snaps = [];
     let finished = false;
-    const whole = readHouse(HANDLES, { onProgress: (s) => { snaps.push(s); order.push("painted without " + s.pending.join(",")); } }).then((r) => { finished = true; return r; });
-
-    // every read but b's doorstep lands; b's doorstep is held shut
-    await until(() => snaps.length && snaps.at(-1).waiting.length === 0 && snaps.at(-1).pending.join() === "b", "everything but b answered");
+    const whole = readHouse(HANDLES, { key: KEY, onProgress: (s) => snaps.push(s) }).then((r) => { finished = true; return r; });
+    // the three town-wide reads land while the aggregate is held shut
+    await until(() => snaps.length && snaps.at(-1).waiting.length === 0, "the town-wide reads answered");
     const mid = snaps.at(-1);
-    assert.equal(finished, false, "the whole answer waits for b's doorstep, and nothing is painted from it");
-    assert.deepEqual(mid.pending, ["b"], "only b is still out");
-    assert.deepEqual(mid.doorsteps.a, { handle: "a", stamps: { assets: 3 } }, "a was painted from its own answer");
-    assert.deepEqual(mid.doorsteps.d, { handle: "d", stamps: { assets: 3 } });
-    assert.equal(mid.doorsteps.c, null, "c's doorstep failed: read, and read as nothing");
-    assert.ok(!mid.pending.includes("c"), "a failed read is not still coming");
-    assert.ok(!("b" in mid.doorsteps), "b has no entry yet: still coming, not 'did not answer'");
-    assert.deepEqual(mid.waiting, [], "the house-wide reads landed without b");
-    assert.deepEqual(mid.outboxes.c, [], "c's other reads (outbox) still answered");
-
-    order.push("released b");
+    assert.equal(finished, false, "the whole answer waits for the aggregate");
+    assert.deepEqual(mid.pending, HANDLES, "every resident is still coming, in the house's order, until the one read settles");
+    assert.deepEqual(mid.doorsteps, {}, "no entry yet: still coming, not 'did not answer'");
+    assert.deepEqual(mid.walkers, { walkers: [] });
     slow.go();
     const done = await whole;
-    assert.ok(order.indexOf("painted without b") < order.indexOf("released b"), "the others were painted before the slow one resolved");
     assert.deepEqual(done.pending, []);
     assert.deepEqual(done.waiting, []);
-    assert.deepEqual(done.doorsteps.b, { handle: "b", stamps: { assets: 3 } });
-    assert.equal(done.doorsteps.c, null);
+    assert.equal(done.doorsteps.b.stamps.assets, 5);
+    assert.ok(snaps.length >= 4, "a snapshot per read that landed");
   });
 });
 
-test("§ 1 a snapshot holds the house's own order, whoever answered first", async () => {
-  const gA = gate(), gB = gate();
-  const { fetchImpl } = office({ held: { "/doorstep/a": gA, "/doorstep/b": gB } });
-  await withFetch(fetchImpl, async () => {
-    const snaps = [];
-    const whole = readHouse(HANDLES, { onProgress: (s) => snaps.push(s) });
-    await until(() => snaps.length && snaps.at(-1).pending.join() === "a,b" && snaps.at(-1).waiting.length === 0, "c and d answered");
-    assert.deepEqual(Object.keys(snaps.at(-1).doorsteps), ["c", "d"]);
-    gB.go();
-    await until(() => snaps.at(-1).pending.join() === "a", "b answered");
-    assert.deepEqual(Object.keys(snaps.at(-1).doorsteps), ["b", "c", "d"], "b answered after c and d and stands before them, as the house lists it");
-    assert.deepEqual(snaps.at(-1).pending, ["a"]);
-    gA.go();
-    const done = await whole;
-    for (const key of ["doorsteps", "outboxes", "quests"]) assert.deepEqual(Object.keys(done[key]), HANDLES, key + " in the house's order");
-  });
+test("§ 1 a failed aggregate is did-not-answer for every resident, with no per-resident fallback; the town-wide reads still land", async () => {
+  const { fetchImpl, calls } = office({ down: [HOUSE_PATH] });
+  const snaps = [];
+  const r = await withFetch(fetchImpl, () => readHouse(HANDLES, { key: KEY, onProgress: (s) => snaps.push(s) }));
+  for (const h of HANDLES) assert.deepEqual([r.doorsteps[h], r.outboxes[h], r.quests[h]], [null, null, null], `${h}: read, and read as nothing`);
+  assert.deepEqual([r.pending, r.waiting], [[], []], "a failed read is not still coming");
+  assert.deepEqual(r.walkers, { walkers: [] });
+  assert.equal(calls.length, 4, "nothing was asked again, per resident or otherwise");
+  assert.ok(!calls.some((c) => /^\/(doorstep|mail|quests)\//.test(c)));
+  const noKey = office();
+  const k = await withFetch(noKey.fetchImpl, () => readHouse(HANDLES));
+  assert.equal(k.doorsteps.a, null, "with no canonical key the aggregate cannot be asked, and the house reads as did-not-answer");
+  assert.equal(noKey.calls.length, 3, "only the town-wide reads are made");
 });
 
-test("§ 1 the total work is unchanged: the same endpoints, each asked once, and no new door", async () => {
-  const { fetchImpl, calls } = office();
-  await withFetch(fetchImpl, () => readHouse(HANDLES, { onProgress: () => {} }));
-  const expected = [
-    ...HANDLES.flatMap((h) => [`/doorstep/${h}`, `/mail/${h}?box=outbox`, `/quests/${h}`]),
-    "/world/walkers", "/world/conversations", "/calendar",
-  ];
-  assert.deepEqual([...calls].sort(), [...expected].sort());
+test("§ 1 the bearer rides ONLY the one aggregate, and only for a reader whose sign-in holds one of the house's residents; owner-only data is the office's gate's", async () => {
+  const owner = office();
+  await withFetch(owner.fetchImpl, () => readHouse(HANDLES, { key: KEY, token: "T0KEN", mine: ["a"] }));
+  assert.equal(owner.auth[HOUSE_PATH], "Bearer T0KEN");
+  for (const p of ["/world/walkers", "/world/conversations", "/calendar"]) assert.equal(owner.auth[p], null, p + " is public: no bearer");
+  for (const [name, opts] of [["signed out", {}], ["a token that holds none of this house's residents", { token: "T0KEN", mine: [] }]]) {
+    const o = office();
+    await withFetch(o.fetchImpl, () => readHouse(HANDLES, { key: KEY, ...opts }));
+    assert.equal(o.auth[HOUSE_PATH], null, `${name}: the public aggregate, no bearer`);
+  }
+  // owner-only segments are not made here: they arrive under residents[h] only if the office's own gate put them there, and are passed through whole
+  const agg = AGG();
+  agg.residents.a.your_pending_letters = { standing: [{ to: "x", title: "t", written_at: "2026-11-16T10:00:00.000Z" }] };
+  const o2 = office({ agg });
+  const r = await withFetch(o2.fetchImpl, () => readHouse(HANDLES, { key: KEY, token: "T0KEN", mine: ["a"] }));
+  assert.equal(r.doorsteps.a.your_pending_letters.standing.length, 1);
+  const anon = await withFetch(office().fetchImpl, () => readHouse(HANDLES, { key: KEY }));
+  assert.ok(!("your_pending_letters" in anon.doorsteps.a), "and a reader the office did not gate in is never handed one, nor is one fabricated");
 });
 
 test("§ 1 each snapshot is its own: a later answer does not change one already handed out", async () => {
@@ -177,7 +228,7 @@ test("§ 1 each snapshot is its own: a later answer does not change one already 
   await withFetch(fetchImpl, async () => {
     // hold each snapshot's own object, and its bytes as it was handed out; every one must still read the same after the last read lands
     const held = [];
-    await readHouse(HANDLES, { onProgress: (s) => held.push([s, JSON.stringify(s)]) });
+    await readHouse(HANDLES, { key: KEY, onProgress: (s) => held.push([s, JSON.stringify(s)]) });
     assert.ok(held.length > 1 && (held[0][0].pending.length > 0 || held[0][0].waiting.length > 0), "the first snapshot is part-read");
     for (const [s, was] of held) assert.equal(JSON.stringify(s), was, "a snapshot is never mutated after it is handed out");
   });
@@ -186,11 +237,11 @@ test("§ 1 each snapshot is its own: a later answer does not change one already 
 // ── § 2 ─────────────────────────────────────────────────────────────────────
 
 test("§ 2 without onProgress it is the finished answer, in the same shape as before, with a failed read null", async () => {
-  const { fetchImpl } = office({ down: ["/doorstep/c", "/calendar"] });
-  const r = await withFetch(fetchImpl, () => readHouse(HANDLES));
+  const { fetchImpl } = office({ down: ["/calendar"] });
+  const r = await withFetch(fetchImpl, () => readHouse(HANDLES, { key: KEY }));
   assert.deepEqual(Object.keys(r.doorsteps), HANDLES);
-  assert.equal(r.doorsteps.c, null);
-  assert.deepEqual(r.doorsteps.a, { handle: "a", stamps: { assets: 3 } });
+  assert.equal(r.doorsteps.c, null, "declared but not ashore: no doorstep");
+  assert.equal(r.doorsteps.a.stamps.assets, 3);
   assert.equal(r.calendar, null, "a house-wide read that failed is null, not pending");
   assert.deepEqual(r.walkers, { walkers: [] });
   assert.deepEqual([r.pending, r.waiting], [[], []]);
@@ -202,8 +253,8 @@ test("§ 2 a painter that throws on a partial answer does not take the reads dow
   const realError = console.error;
   console.error = (...a) => errors.push(a.join(" "));
   try {
-    const r = await withFetch(fetchImpl, () => readHouse(HANDLES, { onProgress: () => { throw new Error("paint blew up"); } }));
-    assert.deepEqual(Object.keys(r.doorsteps), HANDLES, "every resident still came in");
+    const r = await withFetch(fetchImpl, () => readHouse(HANDLES, { key: KEY, onProgress: () => { throw new Error("paint blew up"); } }));
+    assert.deepEqual(Object.keys(r.doorsteps), HANDLES, "every resident still has an entry");
     assert.ok(errors.length > 0, "and the throw was reported, not swallowed silently");
   } finally { console.error = realError; }
 });
