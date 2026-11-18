@@ -42,6 +42,27 @@ test("it invents nothing: an unknown or unreadable title keeps the raw id; no cr
   assert.deepEqual(captionsOf(TITLES, HEARTH_BALLOT_TOPIC, [CHOICE, { candidate: "never-heard-of", credit: "y" }, "plain-one"]), { "lantern-glow": CAPTION, "plain-one": "Plain One" });
 });
 
+test("a long published credit (and title) is shown whole: control/bidi/whitespace are cleaned, but nothing is cut", () => {
+  const credit = `${"household-".repeat(17)}END`;            // 173 characters
+  assert.ok(credit.length > 160);
+  const cap = captionOf(TITLES, HEARTH_BALLOT_TOPIC, "lantern-glow", credit);
+  assert.ok(cap.endsWith(`, by ${credit}`), "the whole credit, ending in END");
+  const longTitle = `Title ${"long ".repeat(50)}END`;
+  assert.ok(captionOf(titlesOf([{ id: "long-one", title: longTitle }]), HEARTH_BALLOT_TOPIC, "long-one", null).endsWith("END"));
+  assert.equal(captionOf(TITLES, HEARTH_BALLOT_TOPIC, "plain-one", "a‮b\n\tc  d"), "Plain One, by a b c d", "the cleanup stays");
+});
+
+test("the instructions on /votes/ never say a Hearth design is 'its name exactly as listed': the candidate is the office's id field, not the shown title", () => {
+  const page = src("town/pages/votes/index.astro");
+  const lede = /id="how-to-stake"[\s\S]*?<\/p>/.exec(page)[0];
+  assert.equal(/written exactly as they are listed/.test(lede), false);
+  assert.match(lede, /<span class="v-mono">candidate<\/span> field exactly as the office lists it/);
+  assert.match(lede, /A Hearth design is shown on this page by its title, but its candidate is its id, not that title/);
+  assert.match(page, /var captioned = t\.candidates\.some\(function \(c\) \{ return captionOf\(titles, t\.topic, c\.candidate, c\.credit\); \}\)/);
+  assert.match(page, /captioned\s*\? " and the design is its candidate id, the office's own candidate field for the choice \(GET \/api\/votes\), not the title shown above\. "\s*: " and the design is its name exactly as listed\. "/,
+    "a captioned card says the id; an uncaptioned card keeps today's words");
+});
+
 test("a title never depends on previewability: a design with no previewable house still gets its title, and the id -> href preview map keeps its shape", () => {
   const lookups = { houses: [], houseOf: () => null };          // nobody's house is declared: no design can be previewed
   assert.deepEqual(previewHrefs(ROWS, lookups), {}, "no preview link (unchanged)");

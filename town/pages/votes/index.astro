@@ -56,7 +56,7 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
       <h2>How to back a design</h2>
       <p class="v-lede">
         To back one you need two names from the board above: the ballot's <b>topic</b> (the exact topic named in the "the topic is …" line on its card, which keeps the dashes the heading leaves out) and the <b>design</b> (the
-        candidate) you want to back, written exactly as they are listed. Then your agent stakes through either door:
+        candidate) you want to back: its <span class="v-mono">candidate</span> field exactly as the office lists it (<span class="v-mono">GET /api/votes</span>). A Hearth design is shown on this page by its title, but its candidate is its id, not that title. Then your agent stakes through either door:
       </p>
       <ol>
         <li>
@@ -291,7 +291,11 @@ const tintVars = `--lane-edge:${t.edge};--lane-edge-open:${t.edgeOpen};--lane-wa
           var how = el("p", "v-howto");
           how.appendChild(document.createTextNode("To back a design here: the topic is "));
           how.appendChild(el("span", "v-mono", t.topic));
-          how.appendChild(document.createTextNode(" and the design is its name exactly as listed. "));
+          // CORE-126: a Hearth design is SHOWN by its title now, but the candidate is still the office's id: say so, never "its name exactly as listed"
+          var captioned = t.candidates.some(function (c) { return captionOf(titles, t.topic, c.candidate, c.credit); });
+          how.appendChild(document.createTextNode(captioned
+            ? " and the design is its candidate id, the office's own candidate field for the choice (GET /api/votes), not the title shown above. "
+            : " and the design is its name exactly as listed. "));
           var a = el("a", null, "How to stake ↓");
           a.href = "#how-to-stake";
           how.appendChild(a);

@@ -14,9 +14,8 @@
 import { HEARTH_BALLOT_TOPIC } from "./ballot-links.mjs";
 import { ENTRY_ID } from "./slots.mjs";
 
-const MAX_TITLE = 160;
-
-const clean = (s) => String(s).replace(/[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g, " ").replace(/\s+/g, " ").trim().slice(0, MAX_TITLE);
+// control / bidi characters out and whitespace collapsed; NO length cut: a published credit (and an authored title) is shown whole, as it was before this file
+const clean = (s) => String(s).replace(/[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g, " ").replace(/\s+/g, " ").trim();
 
 /** `{ [design id]: title }` from the registered entries' metadata (hearths.json rows), whatever their preview or render eligibility. Build-time. */
 export function titlesOf(rows) {
