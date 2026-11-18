@@ -65,6 +65,16 @@ test("publicRegistry drops `human` from every row and changes nothing else", () 
   for (const row of Object.values(expected.households)) delete row.human;
   assert.equal(JSON.stringify(out), JSON.stringify(expected), "every other key, on the top and on each row, in its own order");
   assert.deepEqual(publicRegistry({ schema_version: 1 }), { schema_version: 1 }, "a value that is not a registry passes through");
+  assert.equal(publicRegistry(null), null);
+});
+
+test("publicRegistry strips a shape it does not know, and never throws", () => {
+  const arrayShaped = publicRegistry({ households: [{ slug: "a", human: SENTINEL_A }, "x", null, { slug: "b" }] });
+  assert.deepEqual(arrayShaped, { households: [{ slug: "a" }, "x", null, { slug: "b" }] }, "an array of rows: each row loses the key, a non-object row has none to lose");
+  assert.equal(leaks(publicRegistry({ human: SENTINEL_A, schema_version: 1, households: {} })), false, "the registry's own top-level key");
+  assert.deepEqual(publicRegistry({ households: { a: "not a row", b: 3, c: null, d: ["x"] } }), { households: { a: "not a row", b: 3, c: null, d: ["x"] } }, "rows that are not objects pass as they are");
+  assert.deepEqual(publicRegistry({ households: "nope" }), { households: "nope" });
+  assert.equal(leaks(publicRegistry({ households: { a: { human: SENTINEL_A }, b: { human: SENTINEL_B } } })), false);
 });
 
 // ── the writers ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -150,4 +160,66 @@ test("no committed data file under public/ or src/data/ carries a household row 
     for (const where of rowsWithHuman(json)) bad.push(`${relative(ROOT, f).replaceAll("\\", "/")} ${where}`);
   }
   assert.deepEqual(bad, [], "the registry is committed in a public repo: a household row's `human` is private (office PRIVATE_HOUSE_KEYS)");
+});
+
+// ── the test fixtures ─────────────────────────────────────────────────────────────────────────────────────────
+//
+// A test file is committed too, and a household row copied into one from the live registry is the same leak
+// (test/houses.test.mjs once held two). A TEXT scan, the weakest instrument: it sees a line, not an object. A
+// `human:` with a string literal is a leak unless it is an invented PRIVATE_SENTINEL_… value, when a household-shaped
+// line sits within two lines of it (`residents`, `declared`, `households`). It does not see a value built in code
+// (`human: someVariable`) or a household written across more than five lines; the committed-JSON scan above and the
+// writers' tests are the behavioural readers beside it.
+const HUMAN_LITERAL = /\bhuman\s*:\s*(["'`])((?:(?!\1).)*)\1/;
+const HOUSEHOLD_SHAPE = /\bresidents\b|\bdeclared(?:_by)?\b|\bhouseholds\b/;
+const INVENTED = /^PRIVATE_SENTINEL_/;
+
+export function householdHumanLiterals(text) {
+  const lines = text.split(/\r?\n/);
+  const found = [];
+  lines.forEach((line, i) => {
+    const m = HUMAN_LITERAL.exec(line);
+    if (!m || INVENTED.test(m[2])) return;
+    if (lines.slice(Math.max(0, i - 2), i + 3).some((l) => HOUSEHOLD_SHAPE.test(l))) found.push(i + 1);
+  });
+  return found;
+}
+
+function testFilesUnder(dir) {
+  const out = [];
+  for (const name of readdirSync(dir)) {
+    if (name === "node_modules") continue;
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) out.push(...testFilesUnder(p));
+    else if (/\.(mjs|js|json)$/.test(name)) out.push(p);
+  }
+  return out;
+}
+
+test("householdHumanLiterals flags a household row's real-looking human and nothing else", () => {
+  const row = (v) => `  "a-house": { human: "${v}", residents: ["x"] },`;
+  assert.deepEqual(householdHumanLiterals(row("Someone Real")), [1], "an ordinary literal in a household row");
+  assert.deepEqual(householdHumanLiterals(row("PRIVATE_SENTINEL_x")), [], "an invented sentinel is allowed");
+  assert.deepEqual(householdHumanLiterals(`  { human: 'Someone Real',\n    since: "2026-01-01",\n    residents: ["x"] }`), [1], "a row split over lines, single quotes");
+  assert.deepEqual(householdHumanLiterals(`seat: { ground: "g", seat: "rei", human: "Someone Real" },`), [], "CONTROL: not household-shaped (a seat)");
+  assert.deepEqual(householdHumanLiterals(`// a household's human: "the person"`), [], "prose in a comment with no household shape near it");
+  assert.deepEqual(householdHumanLiterals(`{ human: someVariable, residents: ["x"] }`), [], "a value built in code is not a literal (named limit)");
+});
+
+test("no tracked test file or fixture holds a household row with a real-looking `human` value", () => {
+  const files = testFilesUnder(join(ROOT, "test")).filter((f) => !f.endsWith("no-human-in-committed-registry.test.mjs"));
+  assert.ok(files.some((f) => f.endsWith("houses.test.mjs")), "CONTROL: the scan reached the file that once held two");
+  assert.ok(files.length > 100, "CONTROL: the scan reached the suite, not a handful");
+  const bad = [];
+  for (const f of files) {
+    const text = readFileSync(f, "utf8");
+    const at = relative(ROOT, f).replaceAll("\\", "/");
+    for (const n of householdHumanLiterals(text)) bad.push(`${at}:${n}`);
+    if (f.endsWith(".json")) {
+      let json;
+      try { json = JSON.parse(text); } catch { continue; }
+      for (const where of rowsWithHuman(json)) bad.push(`${at} ${where}`);
+    }
+  }
+  assert.deepEqual(bad, [], "a test's household rows use invented values (PRIVATE_SENTINEL_…), never a copy of the live registry");
 });
