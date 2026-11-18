@@ -7,12 +7,14 @@ import PageFreshness from "@/components/PageFreshness.astro";
 import SparkCard from "@/components/SparkCard.astro";
 import calendar from "@/data/postmark/calendar.json";
 import eventsData from "@/data/postmark/events.json";
+import sparksData from "@/data/postmark/sparks.json";
 import residents from "@/data/postmark/residents.json";
 import { CATALOGUE_WORDS, collectSparks, eventOfSpark, sparkParam } from "@/lib/sparks.mjs";
 import { isRoomId, placeOf, residentHref, roomHref, roomIdOf } from "@/lib/calendar.mjs";
 
 export function getStaticPaths() {
-  return collectSparks(calendar, eventsData)
+  // the register's Sparks (read as served) and every Spark the event reads carry: an event card always has its page, listed in the register or not
+  return collectSparks(calendar, eventsData, sparksData?.read === "ok" && Array.isArray(sparksData.sparks) ? sparksData.sparks : [])
     .map((entry) => ({ params: { id: sparkParam(entry.id) }, props: { entry } }))
     .filter((p) => p.params.id);
 }

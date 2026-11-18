@@ -5,10 +5,11 @@
 // accepted (a view with `accepted === false` is a pending/refused/withdrawn REFERENCE and is not a Spark here), never derives membership from rooms or
 // the clock, and never invents an id, an event or a place.
 //
-// WHERE THE CATALOGUE COMES FROM, today: every accepted Spark the event reads carry (the public completion collection and the accepted gallery), de-duplicated
-// by id in the order the producer served them. That is NOT a complete eventless catalogue: no anonymous read of every accepted Spark exists yet, so the page
-// says exactly that (`CATALOGUE_WORDS.partial`) instead of presenting this list as all of them. `extra` is the one place a named producer source plugs in
-// later (an array of accepted common views, producer order, read first); nothing in the browser stands in for it.
+// WHERE THE CATALOGUE COMES FROM: `extra` is the Spark register (sparks.json, tools/lib/fetch-town-data.mjs fetchSparks: the office's anonymous public mark
+// register, standing Sparks, canonical id the slug), read first and in the register's order; then every accepted Spark the event reads carry (the public
+// completion collection and the accepted gallery), so an event card ALWAYS has its page even if the register does not list that Spark. De-duplicated by id, the
+// first (the register's) view winning. The register is PUBLIC-VISIBLE only, so the page says what it is (`CATALOGUE_WORDS.register`) and, when it could not be
+// read, says that (`CATALOGUE_WORDS.unavailable`); it never claims "every Spark" and never turns an unread register into an empty one.
 
 import { allEventViews, eventHref, eventParams, eventForPage, evidenceRead, pictureOf } from "./calendar.mjs";
 
@@ -42,7 +43,9 @@ const accepted = (x) => isObj(x) && isId(x.id) && x.accepted !== false;
 export function collectSparks(calendar, events, extra = []) {
   const seen = new Map();
   const add = (spark, origin, eventId = null) => {
-    if (!accepted(spark) || seen.has(spark.id) || !sparkParam(spark.id)) return;
+    if (!accepted(spark) || !sparkParam(spark.id)) return;
+    // already known (the register's view wins): the event read that ALSO served it is still remembered, first one kept
+    if (seen.has(spark.id)) { const held = seen.get(spark.id); if (held.seenIn === null && eventId) held.seenIn = eventId; return; }
     const own = isId(spark.event) ? spark.event : null;
     // `eventId` is the Spark's OWN tie (its `event` field); `seenIn` is only the event read that served it (a gallery Spark is a room's, not necessarily the event's)
     seen.set(spark.id, { id: spark.id, spark, eventId: own, seenIn: eventId, href: sparkHref(spark.id), origin });
@@ -75,8 +78,11 @@ export function eventOfSpark(entry, calendar, events) {
 export const CATALOGUE_WORDS = Object.freeze({
   title: "Sparks",
   lead: "Moments the town kept. Every accepted Spark appears here, whether it came from an event, from a room, or from no event at all.",
-  partial: "This list is the accepted Sparks the town's event pages carry. A complete list of every accepted Spark, including those with no event, cannot be read yet, so Sparks made outside an event may be missing here.",
-  none: "No accepted Sparks are listed here yet.",
+  // the register (the office's public mark register, standing Sparks visible to an anonymous reader) was read: say what it is, never "every Spark"
+  register: "These are the accepted Sparks in the town's public register. A Spark in a place the public cannot see is not listed.",
+  // the register could not be read (or was never read): say so, and list only what the event pages carry
+  unavailable: "The town's register of accepted Sparks couldn't be read just now, so this page cannot say whether this list is complete. The Sparks the event pages carry are listed.",
+  none: "No accepted Sparks are listed in the public register.",
   noMatch: "No Spark here matches this filter.",
   flares: "Flares from this spark",
   flaresNone: "None yet. When someone posts a flare from this Spark, it will be linked here.",

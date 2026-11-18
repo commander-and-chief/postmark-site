@@ -42,6 +42,7 @@ export const DATA_FILES = [
   "stats.json",
   "calendar.json",
   "events.json",
+  "sparks.json",
   "quest-posts.json",
   "idea-posts.json",
   "renames.json",
@@ -1069,6 +1070,10 @@ export async function buildOfficeData({
   const eventsRead = await fetchEvents({ apiBase, fetchImpl, retries, gate, calendar, snapshot: readSnapshot("events.json", EMPTY_EVENTS) });
   endpointGaps.push(...eventsRead.gaps);
 
+  // THE SPARK REGISTER (CORE-121): the public standing-mark register's Sparks; any failure is "unavailable" in the file and a gap, never an empty catalogue.
+  const sparksRead = await fetchSparks({ apiBase, fetchImpl, retries, gate });
+  endpointGaps.push(...sparksRead.gaps);
+
   const questRead = await fetchQuestPosts({ apiBase, fetchImpl, retries, gate });
   const questPosts = questRead.missing ? readSnapshot("quest-posts.json", EMPTY_QUEST_POSTS) : questRead.questPosts;
   if (questRead.missing) endpointGaps.push(questRead.gap);
@@ -1108,6 +1113,7 @@ export async function buildOfficeData({
       "stats.json": buildStats({ town, metrics, residents, letters, ledger, snapshotStats }),
       "calendar.json": calendar,
       "events.json": eventsRead.events,
+      "sparks.json": sparksRead.sparks,
       "quest-posts.json": questPosts,
       "idea-posts.json": ideaPosts,
       "renames.json": renames,
@@ -1278,6 +1284,57 @@ export async function fetchEvents({ apiBase, fetchImpl = fetch, retries = 3, gat
   };
 }
 const GROUP_KEYS = ["now", "coming", "ended"];
+
+// ── THE SPARK REGISTER (CORE-121) ───────────────────────────────────────────
+// The Sparks catalogue (/sparks/) is the office's existing ANONYMOUS public register: `GET /world2/marks?all=true&full=true` -> `{ what, count, marks: [...] }`,
+// ordered by slug, every mark that STANDS (producer SQL `status = 'standing'`: that predicate IS acceptance, Office src/event-sparks.mjs STANDING_SPARKS_SQL),
+// each row `{ slug, kind, owner, household, geometry, bbox, status, locked_window, parent, body, data }`. A Spark is a row with `kind === "spark"`, its canonical
+// id is the `slug` (never the store UUID), and it is read into the common view the same way the producer's own `sparkView` reads it (below).
+//
+// WHAT THIS IS NOT. It is the PUBLIC-VISIBLE register: the same read honours anonymous dungeon visibility, so a Spark in a place the public cannot see is not in it.
+// The page therefore never says "every Spark"; it says what this register is. No founder key, no visibility bypass, no second endpoint, no browser acceptance
+// rule. The by-slug read (`/world2/mark?slug=`) is not used: it is not standing-only, and the collection already carries every full row.
+//
+// sparks.json = { read: "ok"|"unavailable"|"absent", note, count, sparks: [common view...] }. Any failure of the read, or a body that is not the register shape
+// (no `marks` array, a spark row with no slug or not standing), is `read: "unavailable"`: never an empty list. "ok" with no spark rows is KNOWN none in the
+// register as served.
+export const EMPTY_SPARKS = Object.freeze({ read: "absent", note: null, count: 0, sparks: [] });
+export const SPARKS_GAP = "sparks.json: the office's public mark register (GET /world2/marks?all=true&full=true) could not be read as the register, so /sparks/ lists only the Sparks the event pages carry and says so";
+
+/** One accepted Spark row as the site reads it, exactly as Office src/event-sparks.mjs `sparkView` does: id (slug), credit, body, accepted, the maker's own properties. */
+export function sparkViewOfMark(m) {
+  const d = m?.data && typeof m.data === "object" && !Array.isArray(m.data) ? m.data : {};
+  const pick = (k) => (d[k] === undefined || d[k] === null || d[k] === "" ? {} : { [k]: d[k] });
+  return {
+    id: m.slug,
+    credit: { by: m.owner ?? d.by ?? null, household: m.household ?? d.household ?? null },
+    body: m.body ?? null,
+    accepted: true,
+    ...(m.locked_window != null ? { accepted_window: Number(m.locked_window) } : {}),
+    ...pick("picture"), ...pick("image_prompt"), ...pick("recounting"),
+    ...pick("experienced_at"), ...pick("experienced_until"),
+    ...pick("rooms"), ...pick("event"), ...pick("circle"), ...pick("circle_path"), ...pick("acts"), ...pick("present"),
+    ...(d.parent_spark ? { own_link: d.parent_spark } : {}),
+  };
+}
+
+/** The register read, as sparks.json. */
+export async function fetchSparks({ apiBase, fetchImpl = fetch, retries = 3, gate = null } = {}) {
+  const gone = (why) => ({ sparks: { read: "unavailable", note: why, count: 0, sparks: [] }, gaps: [SPARKS_GAP] });
+  let body;
+  try {
+    ({ body } = await apiGet("/world2/marks?all=true&full=true", { apiBase, fetchImpl, retries, gate }));
+  } catch (error) {
+    return gone(`the register could not be read (${String(error?.message ?? error).slice(0, 120)})`);
+  }
+  if (!Array.isArray(body?.marks)) return gone("the answer was not the mark register (no marks list)");
+  const rows = body.marks.filter((m) => m && typeof m === "object" && m.kind === "spark");
+  if (rows.some((m) => typeof m.slug !== "string" || m.slug.trim() === "" || m.status !== "standing")) return gone("a Spark row was not a standing mark with a slug, so the register is not read as served");
+  return {
+    sparks: { read: "ok", note: "the public mark register as the build read it (GET /world2/marks?all=true&full=true): standing Sparks visible to an anonymous reader", count: rows.length, sparks: rows.map(sparkViewOfMark) },
+    gaps: [],
+  };
+}
 
 // ── THE QUEST POSTS (POS-294, 2026-09-28) ───────────────────────────────────
 // The town's quests are its posts (Keemin, 2026-09-28), and the Quest Guild

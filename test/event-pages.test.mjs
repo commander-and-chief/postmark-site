@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import {
   EVENT_WORDS, allEventViews, eventForPage, eventHref, eventSections, evidenceRead, isRoomId, legacyEventHref, pictureOf, roomHref, roomIdOf,
 } from "../src/lib/calendar.mjs";
-import { EMPTY_EVENTS, EMPTY_CALENDAR, fetchEvents, fetchPastEvents, fetchEventEvidence, DATA_FILES, EVENTS_GAP } from "../tools/lib/fetch-town-data.mjs";
+import { EMPTY_EVENTS, EMPTY_CALENDAR, fetchEvents, fetchPastEvents, fetchEventEvidence, DATA_FILES, EVENTS_GAP, EMPTY_SPARKS, SPARKS_GAP, fetchSparks, sparkViewOfMark } from "../tools/lib/fetch-town-data.mjs";
 import { READER_MODULE, circleUrl, loadReader, mountRoom, mountRooms, officeSource, roomUrl } from "../src/lib/circle-reader-mount.mjs";
 import { CATALOGUE_WORDS, SPARK_FILTERS, collectSparks, eventOfSpark, sparkHref, sparkParam } from "../src/lib/sparks.mjs";
 
@@ -162,6 +162,18 @@ test("a spark's picture is drawn only from a site path or an https address; anyt
 
 const json = (status, body) => ({ ok: status >= 200 && status < 300, status, statusText: String(status), headers: { get: () => null }, json: async () => body });
 const OFFICE = "https://office.invalid";
+// THE SPARK REGISTER the ingest reads (CORE-121): the office's anonymous GET /world2/marks?all=true&full=true, INVENTED rows (the live office is never read)
+const MARK = (slug, kind, over = {}) => ({ id: `uuid-${slug}`, slug, kind, owner: slug.split("/")[0], household: `hh:${slug.split("/")[0]}-house`, status: "standing", locked_window: 55, parent: null, geometry: null, body: `${slug} (invented)`, data: {}, ...over });
+const REGISTER_MARKS = [
+  MARK("eventless-test/lamp", "spark", { body: "A lamp left on the quay (invented, no event)", data: { recounting: "Left burning for the ferry that never came.", experienced_at: "2026-11-10T20:00:00.000Z", experienced_until: "2026-11-10T21:00:00.000Z" } }),
+  MARK("guest-test/the-pie-argument", "spark", { body: "The pie argument (the register's own view)", data: { recounting: "Register recounting.", rooms: ["t1792519260000-supperkeeper-test"], picture: "https://media.postmark.town/media/guest-test/" + "a".repeat(64) + ".jpg" } }),
+  MARK("littlebird-test/ferry", "spark", { body: "The ferry that waited (invented)", data: { rooms: ["t1-ferry"], event: "supperkeeper-test/harvest-supper-test", parent_spark: "eventless-test/lamp", circle: 70002, circle_path: [70001, 70002] } }),
+  MARK("shop-test/a-stool", "thing"),
+  MARK("hidden-test/not-listed", "spark", { status: "standing" }),
+];
+const registerOffice = (body, status = 200) => async (url) => { const u = new URL(url); return u.pathname === "/world2/marks" && u.searchParams.get("all") === "true" && u.searchParams.get("full") === "true" ? json(status, body) : json(404, { error: "bounce", code: 404 }); };
+const REGISTER = (await fetchSparks({ apiBase: OFFICE, fetchImpl: registerOffice({ what: "marks", count: REGISTER_MARKS.length, marks: REGISTER_MARKS.filter((m) => m.slug !== "hidden-test/not-listed") }), retries: 1 })).sparks;
+
 /** a stub office: `pastPages` is the lasting list as the producer will serve it, or null for the office as it is today (422 unknown argument "past") */
 const stubOffice = ({ pastPages = null, events = {}, asked = [] } = {}) => async (url) => {
   const u = new URL(url);
@@ -311,8 +323,9 @@ before(async () => {
   for (const d of [join(src, "events", "[host]"), join(src, "calendar", "[host]"), join(src, "sparks"), data, join(OUT, "public")]) mkdirSync(d, { recursive: true });
   writeFileSync(join(data, "calendar.json"), JSON.stringify(CAL));
   writeFileSync(join(data, "events.json"), JSON.stringify(EVENTS));
+  writeFileSync(join(data, "sparks.json"), JSON.stringify(REGISTER));       // the register as the ingest reads it (fetchSparks, over the stub office below)
   // the page files are COPIED with their two data imports pointed at the fixture: nothing tracked is touched
-  const point = (t) => t.replaceAll('"@/data/postmark/calendar.json"', JSON.stringify(join(data, "calendar.json"))).replaceAll('"@/data/postmark/events.json"', JSON.stringify(join(data, "events.json")));
+  const point = (t) => t.replaceAll('"@/data/postmark/calendar.json"', JSON.stringify(join(data, "calendar.json"))).replaceAll('"@/data/postmark/events.json"', JSON.stringify(join(data, "events.json"))).replaceAll('"@/data/postmark/sparks.json"', JSON.stringify(join(data, "sparks.json")));
   for (const rel of ["events/index.astro", "events/[host]/[slug].astro", "calendar/[host]/[slug].astro", "sparks/index.astro", "sparks/[...id].astro"]) writeFileSync(join(src, rel), point(readFileSync(join(ROOT, "town/pages", rel), "utf8")));
   const { build } = await import("astro");
   await build({
@@ -464,8 +477,31 @@ test("the real /events/ page states an unavailable lasting list as unavailable, 
 
 // ── (4) CORE-121: the Sparks catalogue, the whole-card link, the detail pages and the past layout ─────────────────────────────────────
 
-const SPARKS = collectSparks(CAL, EVENTS);
-const SPARK_IDS = ["sorbetkeeper-test/sorbet-night-test", "supperkeeper-test/harvest-supper-test", "supperkeeper-test/harvest-supper-guests-test", "guest-test/the-pie-argument", "supperkeeper-test/the-last-slice", "legacy-gallery-spark-test"];
+const SPARKS = collectSparks(CAL, EVENTS, REGISTER.sparks);
+const SPARK_IDS = ["sorbetkeeper-test/sorbet-night-test", "supperkeeper-test/harvest-supper-test", "supperkeeper-test/harvest-supper-guests-test", "guest-test/the-pie-argument", "supperkeeper-test/the-last-slice", "legacy-gallery-spark-test", "eventless-test/lamp", "littlebird-test/ferry"];
+
+test("the Spark register ingest: kind spark rows only, canonical id the slug (never the store UUID), read into the producer's own common view; known none is `ok` with none; every failure is `unavailable`, never an empty list", async () => {
+  assert.equal(REGISTER.read, "ok"); assert.equal(REGISTER.count, 3);
+  assert.deepEqual(REGISTER.sparks.map((s) => s.id), ["eventless-test/lamp", "guest-test/the-pie-argument", "littlebird-test/ferry"], "sparks only, in the register's slug order; the thing is not one");
+  const lamp = REGISTER.sparks[0];
+  assert.deepEqual(lamp, { id: "eventless-test/lamp", credit: { by: "eventless-test", household: "hh:eventless-test-house" }, body: "A lamp left on the quay (invented, no event)", accepted: true, accepted_window: 55,
+    recounting: "Left burning for the ferry that never came.", experienced_at: "2026-11-10T20:00:00.000Z", experienced_until: "2026-11-10T21:00:00.000Z" }, "absent properties stay absent (nothing filled in); the UUID is not the id");
+  const ferry = REGISTER.sparks[2];
+  assert.deepEqual([ferry.rooms, ferry.event, ferry.circle, ferry.circle_path, ferry.own_link], [["t1-ferry"], "supperkeeper-test/harvest-supper-test", 70002, [70001, 70002], "eventless-test/lamp"]);
+  assert.equal("room" in ferry, false, "no scalar room alias");
+  assert.deepEqual(sparkViewOfMark(REGISTER_MARKS[0]), lamp, "the same mapping the page's fixtures use");
+  // known none: a valid register with no Spark rows is `ok`, count 0
+  const none = await fetchSparks({ apiBase: OFFICE, fetchImpl: registerOffice({ what: "marks", count: 1, marks: [REGISTER_MARKS[3]] }), retries: 1 });
+  assert.deepEqual([none.sparks.read, none.sparks.count, none.sparks.sparks.length, none.gaps.length], ["ok", 0, 0, 0]);
+  // every failure is unavailable (and says so with a gap): a refusal, a server error, a body that is not the register, a Spark row that is not a standing slugged mark
+  const bad = [["404", registerOffice({}, 404)], ["500", registerOffice({}, 500)], ["not the register", registerOffice({ what: "marks" })], ["no slug", registerOffice({ marks: [{ kind: "spark", status: "standing", body: "x" }] })],
+    ["not standing", registerOffice({ marks: [MARK("a/b", "spark", { status: "draft" })] })], ["network", async () => { throw new Error("connection refused"); }]];
+  for (const [name, fetchImpl] of bad) {
+    const r = await fetchSparks({ apiBase: OFFICE, fetchImpl, retries: 1 });
+    assert.equal(r.sparks.read, "unavailable", name); assert.deepEqual(r.sparks.sparks, [], name); assert.deepEqual(r.gaps, [SPARKS_GAP], name);
+  }
+  assert.equal(EMPTY_SPARKS.read, "absent"); assert.ok(DATA_FILES.includes("sparks.json"));
+});
 
 test("sparkHref / sparkParam: the producer's own id, each part a path segment, never a guessed slug; an id that cannot be a path has none", () => {
   assert.equal(sparkHref("supperkeeper-test/harvest-supper-test"), "/sparks/supperkeeper-test/harvest-supper-test/");
@@ -495,8 +531,8 @@ test("the drawn filters are predicates over what the producer served: events, wi
   assert.deepEqual(SPARK_FILTERS.map((f) => f.key), ["all", "events", "none", "picture"]);
   const run = (k) => SPARKS.filter(SPARK_FILTERS.find((f) => f.key === k).test).map((e) => e.id).sort();
   assert.equal(run("all").length, SPARK_IDS.length);
-  assert.deepEqual(run("events"), ["sorbetkeeper-test/sorbet-night-test", "supperkeeper-test/harvest-supper-guests-test", "supperkeeper-test/harvest-supper-test"]);
-  assert.deepEqual(run("none"), ["guest-test/the-pie-argument", "legacy-gallery-spark-test", "supperkeeper-test/the-last-slice"], "the eventless ones are included");
+  assert.deepEqual(run("events"), ["littlebird-test/ferry", "sorbetkeeper-test/sorbet-night-test", "supperkeeper-test/harvest-supper-guests-test", "supperkeeper-test/harvest-supper-test"]);
+  assert.deepEqual(run("none"), ["eventless-test/lamp", "guest-test/the-pie-argument", "legacy-gallery-spark-test", "supperkeeper-test/the-last-slice"], "the eventless ones are included, the register's among them");
   assert.ok(run("picture").includes("supperkeeper-test/harvest-supper-test") && !run("picture").includes("supperkeeper-test/harvest-supper-guests-test"));
   assert.equal(eventOfSpark(SPARKS.find((e) => e.id === "supperkeeper-test/harvest-supper-test"), CAL, EVENTS)?.href, "/events/supperkeeper-test/harvest-supper-test/");
   assert.equal(eventOfSpark(SPARKS.find((e) => e.id === "legacy-gallery-spark-test"), CAL, EVENTS), null);
@@ -540,8 +576,15 @@ test("BUILT: /sparks/ lists every accepted Spark once with a whole-card link, th
   for (const c of cards) { assert.match(c, /data-spark-open/); assert.match(c, /data-spark-flares/); }
   assert.doesNotMatch(html, /harvest-supper-pending-test|withdrawn-one-test|before-the-record-test/, "a pending/withdrawn reference is not a Spark here");
   assert.match(html, /data-spark-filters/); for (const f of SPARK_FILTERS) assert.ok(html.includes(`data-filter="${f.key}"`), f.key);
-  assert.equal((html.match(/data-has-event="0"/g) ?? []).length, 3, "the eventless Sparks are drawn");
-  assert.ok(textOf(html).includes(CATALOGUE_WORDS.partial), "this list is not presented as every Spark");
+  assert.equal((html.match(/data-has-event="0"/g) ?? []).length, 4, "the eventless Sparks are drawn, the register's lamp among them");
+  assert.ok(textOf(html).includes(CATALOGUE_WORDS.register), "the page says what the list is: the public register, not every Spark");
+  assert.match(html, /data-spark-register[^>]*data-state="ok"/);
+  assert.equal(html.includes("hidden-test/not-listed"), false, "a Spark the public register does not carry is not invented into the list");
+  assert.ok(html.includes('data-spark="guest-test/the-pie-argument"') && textOf(html).includes("The pie argument (the register's own view)"), "the register's view wins a duplicate");
+  // the unread register is its own sentence and never an empty list or 'no Sparks' (the page's branches, pinned from its source)
+  const src = readFileSync(join(ROOT, "town/pages/sparks/index.astro"), "utf8");
+  assert.match(src, /registerOk \? CATALOGUE_WORDS\.register : CATALOGUE_WORDS\.unavailable/);
+  assert.match(src, /: registerOk && <p[^>]*data-spark-none>/, "'none' is said only when the register was read");
   assert.ok(textOf(html).includes(CATALOGUE_WORDS.flares) && textOf(html).includes(CATALOGUE_WORDS.flaresNone));
 });
 

@@ -3,19 +3,22 @@
 //
 // The accepted gallery of Sparks, events and none, with the drawn filters (All accepted / From events / Without an event / With a picture). Every card is a link
 // to its own page, /sparks/<canonical id>/, over the whole card (SparkCard). What is listed is what the site has been served and the PRODUCER accepted
-// (sparks.mjs collectSparks): this page decides no acceptance and works out no membership. Today the only source is the event reads, which are not a complete
-// eventless catalogue, so the page says so (CATALOGUE_WORDS.partial) rather than present the list as every Spark. "The sparks" and "The gallery" on an event's own
+// (sparks.mjs collectSparks): this page decides no acceptance and works out no membership. The source is the office's public mark register (sparks.json), which
+// is PUBLIC-VISIBLE only, so the page says what it is (CATALOGUE_WORDS.register) rather than "every Spark", and says so when the register could not be read. "The sparks" and "The gallery" on an event's own
 // page stay separate; this is the wider gallery, one click from them.
 import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
 import PageFreshness from "@/components/PageFreshness.astro";
 import SparkCard from "@/components/SparkCard.astro";
 import calendar from "@/data/postmark/calendar.json";
 import eventsData from "@/data/postmark/events.json";
+import sparksData from "@/data/postmark/sparks.json";
 import residents from "@/data/postmark/residents.json";
 import { CATALOGUE_WORDS, SPARK_FILTERS, collectSparks, eventOfSpark } from "@/lib/sparks.mjs";
 import { pictureOf } from "@/lib/calendar.mjs";
 
-const entries = collectSparks(calendar, eventsData);
+// the register's own answer: "ok" (read as served; none is KNOWN none), else unavailable/absent (never an empty list)
+const registerOk = sparksData?.read === "ok" && Array.isArray(sparksData.sparks);
+const entries = collectSparks(calendar, eventsData, registerOk ? sparksData.sparks : []);
 const roll = new Set(residents.map((r) => r.handle));
 const counts = Object.fromEntries(SPARK_FILTERS.map((f) => [f.key, entries.filter(f.test).length]));
 const eventTitle = (entry) => eventOfSpark(entry, calendar, eventsData)?.event?.title ?? null;
@@ -51,10 +54,10 @@ const eventTitle = (entry) => eventOfSpark(entry, calendar, eventsData)?.event?.
           ))}
         </div>
       )
-      : <p class="ev-note pm-paper" data-spark-none>{CATALOGUE_WORDS.none}</p>}
+      : registerOk && <p class="ev-note pm-paper" data-spark-none>{CATALOGUE_WORDS.none}</p>}
     <p class="ev-note pm-paper" data-spark-nomatch hidden>{CATALOGUE_WORDS.noMatch}</p>
 
-    <p class="soft spk-partial" data-spark-partial>{CATALOGUE_WORDS.partial}</p>
+    <p class="soft spk-partial" data-spark-register data-state={registerOk ? "ok" : "unavailable"}>{registerOk ? CATALOGUE_WORDS.register : CATALOGUE_WORDS.unavailable}</p>
 
     <PageFreshness of="the town's Sparks" />
   </div>
