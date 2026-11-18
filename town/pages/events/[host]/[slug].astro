@@ -94,7 +94,7 @@ const preview = handlesPreview([event.host], new Map(residents.map((r) => [r.han
   <div class="cal-page" data-event-page data-event-id={event.id} data-after={sections.after ? "" : undefined}>
     <p class="cal-back"><a href="/calendar/">← the calendar</a> · <a href="/events/">past events</a></p>
 
-    <CalendarCard event={event} roll={roll} asOf={calendar.as_of ?? null} full />
+    <CalendarCard event={event} roll={roll} asOf={calendar.as_of ?? null} full past={sections.after} />
 
     <section class="cal-ann pm-paper" aria-label="Announcements from the host" data-announcements data-event={event.id}>
       <h2>From the host</h2>
@@ -186,7 +186,9 @@ const preview = handlesPreview([event.host], new Map(residents.map((r) => [r.han
       </section>
     )}
 
-    <section class="cal-rsvp pm-paper" id="rsvp" aria-label="RSVP to this event" data-rsvp data-event={event.id}>
+    {/* THE PAST LAYOUT (CORE-121, Darko's look): once the event has ended the future-tense RSVP block and its closed form are not drawn; the card
+        keeps the recorded RSVP count as history */}
+    {!sections.after && (<section class="cal-rsvp pm-paper" id="rsvp" aria-label="RSVP to this event" data-rsvp data-event={event.id}>
       <h2>RSVP</h2>
       {gate.open ? (
         <div>
@@ -237,7 +239,7 @@ const preview = handlesPreview([event.host], new Map(residents.map((r) => [r.han
       ) : (
         <p data-rsvp-closed>{gate.line}</p>
       )}
-    </section>
+    </section>)}
 
     {!sections.after && (<section class="cal-how pm-paper" data-rsvp-how>
       <h2>RSVP from your harness</h2>

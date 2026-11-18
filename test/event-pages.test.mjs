@@ -28,6 +28,7 @@ import {
 } from "../src/lib/calendar.mjs";
 import { EMPTY_EVENTS, EMPTY_CALENDAR, fetchEvents, fetchPastEvents, fetchEventEvidence, DATA_FILES, EVENTS_GAP } from "../tools/lib/fetch-town-data.mjs";
 import { READER_MODULE, circleUrl, loadReader, mountRoom, mountRooms, officeSource, roomUrl } from "../src/lib/circle-reader-mount.mjs";
+import { CATALOGUE_WORDS, SPARK_FILTERS, collectSparks, eventOfSpark, sparkHref, sparkParam } from "../src/lib/sparks.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const FX = JSON.parse(readFileSync(join(ROOT, "test/fixtures/events.sample.json"), "utf8"));
@@ -307,12 +308,12 @@ let DIST = null;
 before(async () => {
   OUT = mkdtempSync(join(ROOT, "node_modules", ".core82-event-test-"));
   const src = join(OUT, "town", "pages"), data = join(OUT, "data");
-  for (const d of [join(src, "events", "[host]"), join(src, "calendar", "[host]"), data, join(OUT, "public")]) mkdirSync(d, { recursive: true });
+  for (const d of [join(src, "events", "[host]"), join(src, "calendar", "[host]"), join(src, "sparks"), data, join(OUT, "public")]) mkdirSync(d, { recursive: true });
   writeFileSync(join(data, "calendar.json"), JSON.stringify(CAL));
   writeFileSync(join(data, "events.json"), JSON.stringify(EVENTS));
   // the page files are COPIED with their two data imports pointed at the fixture: nothing tracked is touched
   const point = (t) => t.replaceAll('"@/data/postmark/calendar.json"', JSON.stringify(join(data, "calendar.json"))).replaceAll('"@/data/postmark/events.json"', JSON.stringify(join(data, "events.json")));
-  for (const rel of ["events/index.astro", "events/[host]/[slug].astro", "calendar/[host]/[slug].astro"]) writeFileSync(join(src, rel), point(readFileSync(join(ROOT, "town/pages", rel), "utf8")));
+  for (const rel of ["events/index.astro", "events/[host]/[slug].astro", "calendar/[host]/[slug].astro", "sparks/index.astro", "sparks/[...id].astro"]) writeFileSync(join(src, rel), point(readFileSync(join(ROOT, "town/pages", rel), "utf8")));
   const { build } = await import("astro");
   await build({
     root: ROOT, configFile: false, srcDir: join(OUT, "town"), outDir: join(OUT, "dist"), publicDir: join(OUT, "public"), site: "https://postmark.town",
@@ -373,8 +374,10 @@ test("BUILT FALSIFIER: who was there lists only the households the office served
   assert.match(present, /hh:supper-test-house/); assert.match(present, /solo:guest-test/);
   assert.equal(present.includes("rsvponly-test"), false, "an RSVP is not a public act");
   assert.match(textOf(present), /Saying you will come \(an RSVP\) does not count\./);
-  assert.ok(textOf(html).includes("rsvponly-test"), "control: the RSVP list on the same page does carry them, in the card's own 'Who is coming'");
-  assert.ok(html.indexOf("rsvponly-test") < html.indexOf("data-ev-present"), "and that is the RSVP list, not the evidence");
+  // the approved past layout (CORE-121) draws no RSVP list on an ended page at all, so an RSVP-only resident is nowhere on it; the CONTROL that the page could
+  // have listed them is the same fixture's RSVP row, which on a RUNNING event's page still carries its RSVP list
+  assert.equal(textOf(html).includes("rsvponly-test"), false, "an ended page lists no RSVP names, so none can be mistaken for who was there");
+  assert.ok(eventHtml(LIVE).includes("data-rsvp"), "control: a running event's page still has its RSVP block");
 });
 
 test("BUILT: an empty completion collection beside a populated gallery: the gallery card stands and the empty sentence does not deny it", () => {
@@ -457,4 +460,122 @@ test("the real /events/ page states an unavailable lasting list as unavailable, 
   const src = readFileSync(join(ROOT, "town/pages/events/index.astro"), "utf8");
   assert.match(src, /read !== "office" && <p[^>]*data-past-note="unavailable"/);
   assert.match(src, /read === "office" && <p[^>]*data-past-note="none"/, "'none' is said only when the office answered and listed none");
+});
+
+// ── (4) CORE-121: the Sparks catalogue, the whole-card link, the detail pages and the past layout ─────────────────────────────────────
+
+const SPARKS = collectSparks(CAL, EVENTS);
+const SPARK_IDS = ["sorbetkeeper-test/sorbet-night-test", "supperkeeper-test/harvest-supper-test", "supperkeeper-test/harvest-supper-guests-test", "guest-test/the-pie-argument", "supperkeeper-test/the-last-slice", "legacy-gallery-spark-test"];
+
+test("sparkHref / sparkParam: the producer's own id, each part a path segment, never a guessed slug; an id that cannot be a path has none", () => {
+  assert.equal(sparkHref("supperkeeper-test/harvest-supper-test"), "/sparks/supperkeeper-test/harvest-supper-test/");
+  assert.equal(sparkHref("legacy-gallery-spark-test"), "/sparks/legacy-gallery-spark-test/");
+  assert.equal(sparkHref("a b/c?d"), "/sparks/a%20b/c%3Fd/", "each part is encoded");
+  for (const bad of ["", "  ", null, undefined, 7, {}]) assert.equal(sparkHref(bad), null);
+  assert.equal(sparkParam("x/../y"), null); assert.equal(sparkParam("x//y"), null); assert.equal(sparkParam("x/y"), "x/y");
+});
+
+test("collectSparks: every ACCEPTED Spark the event reads served, once, in the producer's order; a reference is not a Spark; own event tie is not worked out from a room", () => {
+  assert.deepEqual(SPARKS.map((e) => e.id).sort(), [...SPARK_IDS].sort(), "all the accepted ones, and none of the pending/withdrawn references");
+  assert.equal(new Set(SPARKS.map((e) => e.id)).size, SPARKS.length, "once each");
+  const by = (id) => SPARKS.find((e) => e.id === id);
+  assert.equal(by("supperkeeper-test/harvest-supper-test").eventId, "supperkeeper-test/harvest-supper-test", "a completion Spark names its event (its own field)");
+  assert.equal(by("guest-test/the-pie-argument").eventId, null, "a gallery Spark with no event field of its own has NO event: nothing is inferred from the room or the page it was served on");
+  assert.equal(by("guest-test/the-pie-argument").seenIn, "supperkeeper-test/harvest-supper-test", "but the build knows which event read served it");
+  assert.equal(by("legacy-gallery-spark-test").eventId, null);
+  // a named catalogue source (`extra`) is read first and de-duplicates; nothing else stands in for it
+  const extra = [{ id: "eventless-test/lamp", accepted: true, body: "A lamp (eventless)" }, { id: "guest-test/the-pie-argument", accepted: true, body: "dup" }, { id: "ref-test", accepted: false, status: "pending" }];
+  const all = collectSparks(CAL, EVENTS, extra);
+  assert.equal(all[0].id, "eventless-test/lamp"); assert.equal(all[0].origin, "catalogue");
+  assert.equal(all.filter((e) => e.id === "guest-test/the-pie-argument").length, 1);
+  assert.equal(all.some((e) => e.id === "ref-test"), false);
+});
+
+test("the drawn filters are predicates over what the producer served: events, without an event, with a picture", () => {
+  assert.deepEqual(SPARK_FILTERS.map((f) => f.key), ["all", "events", "none", "picture"]);
+  const run = (k) => SPARKS.filter(SPARK_FILTERS.find((f) => f.key === k).test).map((e) => e.id).sort();
+  assert.equal(run("all").length, SPARK_IDS.length);
+  assert.deepEqual(run("events"), ["sorbetkeeper-test/sorbet-night-test", "supperkeeper-test/harvest-supper-guests-test", "supperkeeper-test/harvest-supper-test"]);
+  assert.deepEqual(run("none"), ["guest-test/the-pie-argument", "legacy-gallery-spark-test", "supperkeeper-test/the-last-slice"], "the eventless ones are included");
+  assert.ok(run("picture").includes("supperkeeper-test/harvest-supper-test") && !run("picture").includes("supperkeeper-test/harvest-supper-guests-test"));
+  assert.equal(eventOfSpark(SPARKS.find((e) => e.id === "supperkeeper-test/harvest-supper-test"), CAL, EVENTS)?.href, "/events/supperkeeper-test/harvest-supper-test/");
+  assert.equal(eventOfSpark(SPARKS.find((e) => e.id === "legacy-gallery-spark-test"), CAL, EVENTS), null);
+});
+
+// the cards of a page's HTML
+const cardsOf = (html) => html.split("<article").slice(1).map((c) => "<article" + c.split("</article>")[0] + "</article>").filter((c) => /class="[^"]*spark-card/.test(c));
+
+test("BUILT: every Spark card, in both event sections, is ONE real link to its canonical page: the headline anchor is stretched over the whole card, nothing nests, the other links stay", () => {
+  const html = eventHtml(SUPPER);
+  const cards = cardsOf(html);
+  assert.equal(cards.length, 4, "two completion Sparks + two gallery Sparks (the pending reference is not a card)");
+  for (const card of cards) {
+    const id = /data-spark="([^"]*)"/.exec(card)[1];
+    const opens = [...card.matchAll(/<a\b[^>]*data-spark-open[^>]*>/g)];
+    assert.equal(opens.length, 1, `${id}: exactly one card-wide anchor`);
+    assert.match(opens[0][0], new RegExp(`href="/sparks/${id}/"`), `${id}: it goes to the canonical address`);
+    assert.equal((card.match(/<a\b/g) ?? []).length, (card.match(/<\/a>/g) ?? []).length);
+    assert.doesNotMatch(card, /<a\b[^>]*>(?:(?!<\/a>)[\s\S])*<a\b/, `${id}: no anchor inside another anchor`);
+    assert.match(card, /spark-card[^>]*is-link/, `${id}: drawn as a link card`);
+  }
+  assert.ok(cards.some((c) => /data-spark-rooms[\s\S]*href="\/conversations\/#/.test(c)), "the room links keep working");
+  // the card-wide link's stretch and focus ring are in the component's own CSS (the browser does the rest: new-tab, modifiers, Enter)
+  const css = readFileSync(join(ROOT, "src/components/SparkCard.astro"), "utf8");
+  assert.match(css, /\.spark-open::after \{ content: ""; position: absolute; inset: 0;/); assert.match(css, /:has\(\.spark-open:focus-visible\) \{ outline: 3px solid/);
+  assert.match(css, /\.spark-credit a, \.spark-rooms a \{ position: relative; z-index: 2; \}/, "other links sit above the stretched one");
+});
+
+test("BUILT: a Spark's headline is dark on its cream card (an own colour, never the page's pale heading) and a no-picture Spark still has no empty tile", () => {
+  const css = readFileSync(join(ROOT, "src/components/SparkCard.astro"), "utf8");
+  assert.match(css, /\.spark-head \{[^}]*color: var\(--pm-ink\)/);
+  const guests = cardsOf(eventHtml(SUPPER)).find((c) => c.includes("harvest-supper-guests-test"));
+  assert.ok(guests && !guests.includes("data-spark-picture"), "no picture, no tile");
+});
+
+test("BUILT: /sparks/ lists every accepted Spark once with a whole-card link, the filters, the empty Flares place and the honest 'not complete' sentence; unaccepted references are absent", () => {
+  const html = built("sparks");
+  assert.ok(html, "/sparks/ is not built");
+  const cards = cardsOf(html);
+  assert.deepEqual(cards.map((c) => /data-spark="([^"]*)"/.exec(c)[1]).sort(), [...SPARK_IDS].sort());
+  for (const c of cards) { assert.match(c, /data-spark-open/); assert.match(c, /data-spark-flares/); }
+  assert.doesNotMatch(html, /harvest-supper-pending-test|withdrawn-one-test|before-the-record-test/, "a pending/withdrawn reference is not a Spark here");
+  assert.match(html, /data-spark-filters/); for (const f of SPARK_FILTERS) assert.ok(html.includes(`data-filter="${f.key}"`), f.key);
+  assert.equal((html.match(/data-has-event="0"/g) ?? []).length, 3, "the eventless Sparks are drawn");
+  assert.ok(textOf(html).includes(CATALOGUE_WORDS.partial), "this list is not presented as every Spark");
+  assert.ok(textOf(html).includes(CATALOGUE_WORDS.flares) && textOf(html).includes(CATALOGUE_WORDS.flaresNone));
+});
+
+test("BUILT: every Spark has its page at its canonical address: its card in full (no card-wide link on itself), where it came from, the maker, and the empty Flares place", () => {
+  for (const id of SPARK_IDS) {
+    const html = built("sparks", ...id.split("/"));
+    assert.ok(html, `/sparks/${id}/ is not built`);
+    assert.match(html, /data-spark-detail/); assert.ok(html.includes(`data-spark-id="${id}"`));
+    assert.doesNotMatch(html, /data-spark-open/, `${id}: the detail's own card does not link to itself`);
+    assert.match(html, /data-spark-came/); assert.match(html, /data-spark-maker/);
+    const t = textOf(section(html, "data-spark-flares-place"));
+    assert.ok(t.includes(CATALOGUE_WORDS.flares) && t.includes(CATALOGUE_WORDS.flaresNone), `${id}: the empty Flares place`);
+  }
+  const rootHtml = built("sparks", "supperkeeper-test", "harvest-supper-test");
+  assert.ok(textOf(rootHtml).includes("Event:") && textOf(rootHtml).includes("Harvest Supper (invented; ended outside the seven-day list)"));
+  assert.match(rootHtml, /href="\/events\/supperkeeper-test\/harvest-supper-test\/"/, "the event link is the event's page");
+  const eventless = built("sparks", "legacy-gallery-spark-test");
+  assert.equal(eventless.includes("data-spark-event"), false, "an eventless Spark simply has no Event line");
+  assert.match(eventless, /data-spark-rooms/, "but keeps its room");
+  assert.match(eventless, /data-spark-seen/, "and says which event's gallery served it");
+});
+
+test("BUILT: the approved PAST layout: an ended event draws no future-tense 'Who is coming' list and no RSVP form (open or closed); the recorded count stays; a running event is as it was", () => {
+  const ended = eventHtml(SUPPER);
+  const t = textOf(ended);
+  assert.equal(t.includes("Who is coming"), false); assert.equal(t.includes("No one has RSVPed yet"), false);
+  assert.equal(ended.includes("data-rsvp"), false, "no RSVP section, form or closed line");
+  assert.equal(t.includes("RSVPs closed"), false);
+  assert.match(t, /RSVPs\s+3 residents/, "the recorded RSVP count stays in the card, as history");
+  assert.ok(ended.includes("data-ev-present"), "who was THERE is its own section (public acts), never the RSVP list");
+  const live = eventHtml(LIVE);
+  assert.ok(textOf(live).includes("Who is coming") && live.includes("data-rsvp"), "while it runs the page keeps its RSVP block");
+});
+
+test("the nav has one Sparks door, /sparks/", () => {
+  assert.match(readFileSync(join(ROOT, "src/lib/nav.mjs"), "utf8"), /\{ key: "sparks", label: "Sparks", href: "\/sparks\/" \}/);
 });

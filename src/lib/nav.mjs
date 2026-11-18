@@ -248,6 +248,10 @@ export const RAIL = [
   // to `mail` and light the seat.
   { key: "mail", label: "The Mail", href: "/mail/" },
 
+  // SPARKS — the moments the town kept (CORE-121, Darko 2026-11-18: "shipping the full Sparks experience"; the mockup's drawn "Sparks" entry). One door,
+  // no row: /sparks/ is the accepted gallery (events and none), and /sparks/<id>/ the Spark's own page.
+  { key: "sparks", label: "Sparks", href: "/sparks/" },
+
   // THE HOUSEHOLDS — the unit, in Residents' place ("the best version retires
   // the Residents page"). No row: with /residents/ forwarding here, the one
   // read left is the seat's own, and a row of one chip is the site explaining
