@@ -296,6 +296,18 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
         return mono;
       }
 
+      // THE READER'S FACE PROVIDER (CORE-128, Darko 2026-11-19 15:36 EST: "profile pictures next to speakers"). The World's circle reader accepts an
+      // OPTIONAL `faceForSpeaker(handle) -> a fresh decorative DOM node | null` and puts the node inline in each statement's byline (a reader that does
+      // not know the option ignores it). It is faceNode above, unchanged: the guarded public picture, the colour and letter fallback, the dashed
+      // `human-of-` chip with no photo. A FRESH node per call, so a speaker who speaks again never takes an earlier statement's face. Never throws:
+      // a face is a garnish, so a failure is no face, never a blocked line.
+      function faceForSpeaker(handle) {
+        try {
+          var h = String(handle == null ? "" : handle).trim();
+          return h ? faceNode(h) : null;
+        } catch (e) { return null; }
+      }
+
       function threadNode(t) {
         var card = el("article", "c-thread" + (t.live ? " is-live" : ""));
         // the id is how a card's scroll position survives the next rebuild
@@ -674,6 +686,7 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
         var rec = { host: host, reader: null, ready: null, seen: t.latest + ":" + t.voice_count, flatHidden: false };
         card.__cr = rec;
         rec.ready = h.mount(host, String(t.id), {
+          faceForSpeaker: faceForSpeaker,
           onState: function (st) {
             if (st === "room" || st === "circle") showFlat(card, false, "");
             else if (st === "unavailable") showFlat(card, true, "The circles couldn't be read just now, so these are the words this page already holds:");
@@ -849,7 +862,13 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
       // appear under the names already on screen.
       fetch("/world-engine/residents-meta.json", { headers: { accept: "application/json" } })
         .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (d) { if (d && d.residents) { faces = d.residents; tick(); } })
+        .then(function (d) {
+          if (d && d.residents) {
+            faces = d.residents; tick();
+            // the readers drew (or are drawing) their bylines before the pictures landed: ask them to redraw so the faces appear under the names
+            refreshReaders(liveBox, true); refreshReaders(closedBox, true);
+          }
+        })
         .catch(function () { /* names only — a face is a garnish, never the meal */ });
 
       tick();
@@ -886,7 +905,7 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
     // and a Reply press is announced as a `pm:reply-target` event for the speak box below. Nothing here derives a link, a parent or a circle.
     const __getTok = () => { try { return JSON.parse(localStorage.getItem(KEYS.token) || "null"); } catch { return null; } };
     window.__pmCircleReaders = {
-      async mount(host, roomId, { onState = null } = {}) {
+      async mount(host, roomId, { onState = null, faceForSpeaker = null } = {}) {
         const mod = await loadReader({});
         if (!mod) return { ok: false, why: "the circle reader is not on this site's pinned World yet" };
         if (typeof mod.READER_CSS === "string" && mod.READER_CSS && !document.querySelector("style[data-circle-reader-css]")) {
@@ -901,6 +920,8 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
           onReply: (target) => document.dispatchEvent(new CustomEvent("pm:reply-target", { detail: target })),
           onState,
           hrefForCircle: (c) => `#circle-${encodeURIComponent(c)}`,
+          // CORE-128: the optional face provider, handed on ONLY when the page gave one (a reader without the option, or a caller without a provider, is unchanged)
+          ...(typeof faceForSpeaker === "function" ? { faceForSpeaker } : {}),
         });
         await reader.showRoom(roomId);
         return { ok: true, reader };
@@ -1311,6 +1332,12 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
       font: 600 0.7rem/1 var(--pm-mono); letter-spacing: 0;
       border: 1px solid rgba(232, 196, 139, 0.25);
       background: rgba(232, 196, 139, 0.08);
+    }
+    /* CORE-128: the same small face INLINE at the start of a reader byline (the World's circle reader puts the provider's node first in .cr-head-line):
+       about 20px, in the line's own flow, so no statement or subtree gains a gutter and the speech keeps its width */
+    .convo .cr-head-line > .c-face {
+      display: inline-grid; vertical-align: middle; width: 20px; height: 20px; margin: -2px 0.4em 0 0;
+      font-size: 0.62rem; box-sizing: border-box;
     }
     /* the human of a house: never a portrait, never a colour of their own */
     .convo .c-face.is-human {
