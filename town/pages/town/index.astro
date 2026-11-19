@@ -75,7 +75,7 @@ import { loadWorldState, notices, FIXTURE, BOARD_PLACE, ASK_MAX } from "@/lib/bo
 // import kept "just in case" is how a struck block finds its way back, which
 // this page has now been taught twice (HOLO_LINE was the first).
 import {
-  LANES, DEFAULT_LANE, standing, ideas, questStandings, questCards, questBoardFrom, townDay, marketplace, PAIR_RULE,
+  LANES, DEFAULT_LANE, CHANGE_SOON_LABEL, standing, ideas, questStandings, questCards, questBoardFrom, monthTallies, townDay, marketplace, PAIR_RULE,
   readPen, loadPlaceMarks, plaque, markStakes, stakeOf,
   ideaDashboard, boardDashboard, worldPin,
   BLUEPRINTS_REPO, THINK_TANK_PLACE,
@@ -87,6 +87,9 @@ import LaneHead from "@/components/LaneHead.astro";
 import LaneTutorial from "@/components/LaneTutorial.astro";
 import houseRegistry from "@/data/postmark/households.json";
 import meeps from "@/data/postmark/meeps.json";
+// POS-1066 A: the Hearth ballot's designs, each to its live preview on its author's own house (the map is the build's; hearth/ballot-links.mjs)
+import { hearthPreviews } from "@/lib/hearth/ballot-previews.mjs";
+import { hearthTitles } from "@/lib/hearth/ballot-titles.mjs";
 import bulletin from "@/data/postmark/bulletin.json";
 import questPosts from "@/data/postmark/quest-posts.json";
 import questRegistry from "@/data/postmark/quest-registry.json"; // POS-954: the town's quest registry, the office board's own source (monthly quests)
@@ -175,10 +178,12 @@ const quests = questStandings(bulletin);
 // /posts?class=quest, baked as quest-posts.json.
 // A quest with an `ends` is offered through that town day (POS-857), the day this build ran in.
 // A MONTHLY quest is drawn from the registry the office's board reads (POS-954): no post need name it (civic.mjs § questBoardFrom).
-const questRows = questCards(quests, questBoardFrom(questPosts, { today: townDay(), registry: questRegistry }));
 // FERRY'S HALL OF FAME (POS-967): this month's top five, from the same view the
 // full board draws, in the town's month (townDay), never the runner's.
 const hallPreview = hallView(loadHall(), { today: townDay(), limit: 5, letterBook: letterAddresses(threads, letters) });
+// BRING A NEIGHBOUR'S CARD SHOWS THE TOWN'S MONTH (POS-885): the Guild is town-wide, so the card says how many neighbours the whole
+// town brought this month (the Hall's month record, the same ledger the board's per-household count reads), not "N of 10".
+const questRows = questCards(quests, questBoardFrom(questPosts, { today: townDay(), registry: questRegistry }), monthTallies(questRegistry, hallPreview));
 const market = marketplace(bulletin);
 
 // THE FIVE PLAQUES, per lane, read from the record. No sentence below is typed
@@ -408,7 +413,23 @@ const switchCss = [
                     founder's ruling of 2026-09-01 and nothing the world can
                     settle. One owner for it, `LANES[].live`, so the badge here
                     and the heading in the panel cannot drift apart. */}
-                {!lane.live && <span class="cq-coming">coming soon</span>}
+                {!lane.live && !lane.changeSoon && <span class="cq-coming">coming soon</span>}
+                {/* WORKS TODAY, LIKELY TO CHANGE SOON (POS-1065; Darko, 2026-11-15
+                    18:52 EST: "it's okay if they are still working, more
+                    important that the town knows that they are subject to change
+                    soon"; Wright, 2026-11-16 05:21:47Z: "bounties and the
+                    Marketplace work today and are likely to change soon. Not
+                    paused, not retired, not coming soon"). A LABEL on the
+                    Bounty Board and the Marketplace, read from
+                    `LANES[].changeSoon` and worded in civic.mjs; BOTH clauses
+                    are the wording, so the chip wraps to two lines instead of
+                    clipping either. On the Marketplace it REPLACES the
+                    coming-soon chip on this card (one chip); `live: false` is
+                    read exactly as before. A different thing from "not standing
+                    yet" above: not the world's answer, only what the lane reads
+                    today. It disables nothing, and the building is still the
+                    same anchor to the same panel. */}
+                {lane.changeSoon && <span class="cq-change">{CHANGE_SOON_LABEL}</span>}
               </a>
             </li>
           );
@@ -564,7 +585,15 @@ const switchCss = [
                       position is invisible to that stripper — so quoting the
                       struck line there turned the removal's own falsifier red
                       about a page that was already correct. */}
-                  {q.done != null && q.of ? (
+                  {/* A MONTHLY QUEST THE WHOLE TOWN COUNTS (POS-885): one town figure in place of the daily board's snapshot. A null is the
+                      honest unavailable, never a zero. */}
+                  {"monthTotal" in q ? (
+                    q.monthTotal != null ? (
+                      <p class="m-barlab"><b>{q.monthTotal}</b> {q.monthTotal === 1 ? "neighbour" : "neighbours"} brought this month <span class="m-dim">· town total</span></p>
+                    ) : (
+                      <p class="m-barlab m-dim">Town count unavailable</p>
+                    )
+                  ) : q.done != null && q.of ? (
                     <div class="m-bar-wrap">
                       <div class="m-bar" role="img" aria-label={`${q.done} of ${q.of} on this board completed this (board snapshot)`}>
                         <i style={`width:${Math.max(2, pct(q.done / q.of))}%`}></i>
@@ -1173,42 +1202,40 @@ const switchCss = [
             this lane carried went with the walk that could not reach it. */}
         <LaneHead lane={LANE_BY.votes} plaque={PLAQUES.votes} slides={tutorialFor("votes").length} />
 
-        {/* THE TALLIES ARE NOT EMBEDDED, and that is a decision rather than an
-            omission. /votes/ fetches the office's live ballot API on the client
-            and re-renders itself between site builds; lifting that fetch onto
-            the hub would put a second live poller on a page that already has
-            one, and would make the hub's own freshness a question. The lane
-            says what a vote IS and opens the door to the room that is already
-            live. */}
-        {/* ONE SENTENCE AND THE DOOR, founder-ruled 2026-08-31: the lane's
-            description was "overtechnical and confusing" — minting, household
-            headroom, liquid balance, cap bounces, the two cast doors and their
-            three frontmatter keys, all before a reader had been told where the
-            votes are.
+        {/* THE OPEN BALLOTS ARE READ HERE NOW (POS-1060; Darko, 2026-11-15: the
+            Ballot House "to be the main place where you see the ballots ... right
+            now that portion is just kind of a redirect"). Before this the lane
+            held one sentence and a door, on the reasoning that /votes/ already
+            reads the office's ballot API in the browser and a second poller on
+            the hub was not worth it. The ruling changed that: the panel is the
+            place, and /votes/ is its full view.
 
-            WHAT THE SENTENCE HAD TO GET RIGHT is where the ballots live, and
-            it is read from the sources rather than composed: /votes/ is the
-            Ballot Box and renders `GET /api/votes` client-side "so the page is
-            current between site builds" (its own header), and the ballot
-            house's world mark says one law decides every staked stamp there
-            "whether cast at the counter or carried in by mail". So: the office
-            answers, this build does not, and both doors land in the same room.
+            WHAT IS READ AND WHAT IS NOT BAKED. `GET /api/votes` in the browser
+            (src/lib/ballot-panel.mjs), so a new answer changes this block with
+            no site rebuild; the build holds the heading, the sentence below and
+            the door, and no tally, no ballot name and no count. THE FOUR STATES
+            ARE DIFFERENT SENTENCES: still reading, could not be read, readable
+            and none open, and the open ballots. It is re-read when the panel is
+            opened, so a reader who left this page up does not meet an old tally.
 
-            NOTHING WAS LOST, checked rather than assumed: /votes/ itself
-            carries the two doors under "How to cast a stake" and the clip /
-            mint / final-for-the-window fine print verbatim, and the tri-law is
-            in /stamps/#staking. Every fact struck here is one click away at the
-            door this lane's whole job is to open. */}
+            ONE SENTENCE AND THE DOOR stay (founder-ruled 2026-08-31: the lane's
+            description was "overtechnical and confusing"): this block only
+            READS. Staking, past ballots, the bodies of the ballots and every
+            way to cast live at the door, which is why it stays under the list. */}
         <p class="c-say">
-          The town's open ballots live at <a href="/votes/">the Ballot Box</a>,
-          tallied straight from the office rather than from this build — so what
-          you see there is the vote as it stands right now, not as it stood when
-          this page was made.
+          These are the town's open ballots, read from the office when this page
+          opened, and <a href="/votes/">the Ballot Box</a> is the full view: each
+          ballot whole, the past ones, and every way to back a design.
         </p>
+        <div class="bp" data-ballot-panel aria-live="polite" aria-busy="true" data-hearth-previews={JSON.stringify(hearthPreviews)} data-hearth-titles={JSON.stringify(hearthTitles)}>
+          <p class="bp-note">Reading the ballot box…</p>
+          <noscript><p class="bp-note">The open ballots are read in your browser. With scripts off, <a href="/votes/">the Ballot Box</a> has them.</p></noscript>
+        </div>
         <p class="m-note">
           <a class="c-door" href="/votes/">Open the Ballot Box →</a>
         </p>
       </div>
+      <LaneTutorial lane={LANE_BY.votes} slides={tutorialFor("votes")} />
     </section>
 
     </div>{/* ── end of the panel ───────────────────────────────────────── */}
@@ -1389,6 +1416,22 @@ const switchCss = [
       if (e.key === "ArrowLeft") step(dialog, Number(dialog.dataset.at || 0) - 1);
     });
   })();
+</script>
+
+{/* THE BALLOT HOUSE PANEL'S READ (POS-1060). A bundled module, not a second inline script: the helper is src/lib/ballot-panel.mjs
+    (pure rendering plus one fetch of the office's public GET /votes), the same read /votes/ makes. It reads once when the page loads
+    and again when the panel is opened (the helper listens for the fragment becoming #ballot-house, so this page holds no hashchange
+    listener of its own and the CSS-only switch above is not touched): a page left open does not show an old tally. No form, no sign-in
+    and no write ride this. */}
+<script>
+  import { mountBallotPanel } from "@/lib/ballot-panel.mjs";
+  import { readPreviews } from "@/lib/hearth/ballot-links.mjs";
+  import { readTitles } from "@/lib/hearth/ballot-caption.mjs";
+
+  const host = document.querySelector("[data-ballot-panel]");
+  // POS-1066 A: the build's Hearth preview map, read back (only its own links survive): a Hearth ballot design links to its live preview
+  // CORE-126: and the build's id -> authored title map: a Hearth design reads "<title>, by <household>" (unknown titles keep the raw id)
+  mountBallotPanel(host, { previews: readPreviews(host?.getAttribute("data-hearth-previews")), titles: readTitles(host?.getAttribute("data-hearth-titles")) });
 </script>
 
 <style>
@@ -1671,6 +1714,22 @@ const switchCss = [
   .m-card.is-quest .m-chip {
     border-color: rgba(var(--pm-stamp-rgb), 0.4);
     color: var(--pm-stamp-bright);
+  }
+
+  /* ── WORKS TODAY · LIKELY TO CHANGE SOON, on the building (POS-1065) ───
+     A LABEL, outlined where COMING SOON is filled and "not standing yet" is
+     dashed, so they never read as one badge. It stands in place of COMING SOON
+     on the Marketplace card (Wright, 2026-11-16 05:21:47Z). BOTH clauses must
+     stay readable, so unlike the one-word chips it WRAPS (to two lines, centred,
+     in the building's own width) rather than clip or shrink. It does not dim the
+     building, take the link away or change its hit area: the cell is still an
+     ordinary anchor to the lane's panel. Gold-bright text on the night
+     background, well over 4.5:1. */
+  .cq-change {
+    font-family: var(--pm-mono); font-size: 0.5rem; letter-spacing: 0.08em; line-height: 1.45;
+    text-transform: uppercase; color: var(--pm-gold-bright); text-align: center;
+    border: 1px solid rgba(232, 196, 139, 0.6); border-radius: 0.8em;
+    padding: 0.25em 0.7em; margin-top: 0.3rem; max-width: 100%; white-space: normal;
   }
 
   /* ── COMING SOON, on the building ──────────────────────────────────────
@@ -2156,5 +2215,54 @@ const switchCss = [
     .s-gloss > div { grid-template-columns: 1fr; gap: .2rem; }
     .s-split span { font-size: .58rem; }
     .m-patron { white-space: normal; }
+  }
+</style>
+
+{/* THE BALLOT HOUSE PANEL'S LOOK (POS-1060). Global, because the block below `.bp` is drawn by script (src/lib/ballot-panel.mjs) and
+    nodes made at runtime carry no scope attribute, so the scoped sheet above could not reach them. Every rule starts at `.bp`, so none
+    can leak onto another panel. The shapes are the adjacent boards': `.m-none`'s dotted note and warning border, the card's gold line,
+    the stamp family for the figures (the page's stamp-purple law). */}
+<style is:global>
+  .bp { margin: var(--civic-block, 1.2rem) 0 0; }
+  .bp .bp-note {
+    margin: 0; padding: 1.1rem 1.3rem; border: 1px dotted rgba(128, 128, 128, .5); border-radius: .5rem;
+    font-size: var(--civic-body); line-height: 1.65;
+  }
+  .bp .bp-note.is-warn { border-style: solid; border-color: rgba(232, 196, 139, .45); }
+  .bp .bp-note b { color: var(--pm-gold-bright); font-weight: 600; }
+  .bp .bp-note a { color: var(--pm-gold); }
+  .bp .bp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .9rem; }
+  .bp .bp-ballot {
+    border: 1px solid rgba(232, 196, 139, .22); border-radius: .6rem; padding: .85rem 1.05rem .8rem;
+    background: rgba(14, 22, 42, .45);
+  }
+  .bp .bp-head { display: flex; align-items: baseline; gap: .6em; flex-wrap: wrap; }
+  .bp .bp-title { margin: 0; font-size: 1.05rem; font-weight: 400; color: var(--pm-gold-bright); overflow-wrap: anywhere; }
+  .bp .bp-chip {
+    font: .56rem/1 var(--pm-mono); letter-spacing: .12em; text-transform: uppercase;
+    padding: .35em .8em; border-radius: 999px; border: 1px solid; white-space: nowrap;
+  }
+  .bp .bp-chip.bp-staking { color: #8fd49a; border-color: rgba(143, 212, 154, .5); }
+  .bp .bp-chip.bp-submissions { color: var(--pm-stamp-bright); border-color: rgba(var(--pm-stamp-rgb), .45); }
+  .bp .bp-window { margin: .4rem 0 0; font-size: .8rem; line-height: 1.5; opacity: .8; overflow-wrap: anywhere; }
+  .bp .bp-designs { list-style: none; margin: .55rem 0 0; padding: 0; }
+  .bp .bp-design {
+    display: grid; grid-template-columns: minmax(7em, 1fr) auto auto; gap: .15em 1em; align-items: baseline;
+    padding: .3em 0; font-size: var(--civic-body); border-top: 1px solid rgba(232, 196, 139, .08);
+  }
+  .bp .bp-design:first-child { border-top: 0; }
+  .bp .bp-name { overflow-wrap: anywhere; }
+  /* POS-1066 A: a Hearth design's "see it", the page's own link colour (the note's) */
+  .bp .bp-see { font-size: .8em; color: var(--pm-gold); white-space: nowrap; }
+  .bp .bp-n { font-family: var(--pm-mono); color: var(--pm-stamp-bright); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  .bp .bp-n.is-unreadable { color: inherit; opacity: .75; }
+  .bp .bp-houses { font-family: var(--pm-mono); font-size: .8em; opacity: .78; text-align: right; white-space: nowrap; }
+  .bp .bp-quiet, .bp .bp-warn { margin: .5rem 0 0; font-size: .8rem; line-height: 1.5; opacity: .8; }
+  .bp .bp-warn { opacity: 1; color: var(--pm-gold); }
+  @media (max-width: 720px) {
+    .bp .bp-note { padding: .95rem 1rem; }
+    .bp .bp-ballot { padding: .8rem .85rem .75rem; }
+    .bp .bp-design { grid-template-columns: 1fr auto; }
+    .bp .bp-houses { grid-column: 1 / -1; text-align: left; }
   }
 </style>

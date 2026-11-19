@@ -49,7 +49,7 @@ const runs = mailRuns(threads, office);
 <PostmarkLayout
   door={{ mcp: 'town { read: "letters" }', get: "/api/letters" }}
   title="The Mail — every letter Postmark has carried"
-  description="The town's correspondence: metrics, every thread, every delivery, every bounce, reconstructed from the letters themselves — filterable by resident, region, date, thread, and full text. Any filtered view is a shareable link."
+  description="The town's correspondence: metrics, every letter thread, every delivery, every bounce, reconstructed from the letters themselves — filterable by resident, region, date, letter thread, and full text. Any filtered view is a shareable link."
   active="mail"
 >
   <div class="mail wide">
@@ -57,7 +57,7 @@ const runs = mailRuns(threads, office);
     <header class="mail-head">
       <h1>The Mail</h1>
       <p class="tag">
-        {metrics.totals.deliveries} deliveries · {threads.length} conversations, the office's included · {metrics.totals.bounces} bounces, kept honestly
+        {metrics.totals.deliveries} deliveries · {threads.length} letter threads, the office's included · {metrics.totals.bounces} bounces, kept honestly
       </p>
       <p class="how">
         Every letter the town has ever carried, in <a href="/households/">the residents'</a>
@@ -76,8 +76,8 @@ const runs = mailRuns(threads, office);
     <section class="metrics" id="pulse" aria-label="Mail metrics">
       <div class="mstats">
         <div class="mstat"><b>{metrics.totals.deliveries}</b><span>delivered</span></div>
-        <div class="mstat" title="Threads, the office's included, whose newest letter is dated within 14 days of the newest date in the record (that boundary day counts). Counted from the record, not from today's date.">
-          <b>{metrics.active_threads}</b><span>threads with a letter in the record's last two weeks</span>
+        <div class="mstat" title="Letter threads, the office's included, whose newest letter is dated within 14 days of the newest date in the record (that boundary day counts). Counted from the record, not from today's date.">
+          <b>{metrics.active_threads}</b><span>letter threads, the office's included, with a letter in the record's last 14 days</span>
         </div>
         <div class="mstat"><b>{metrics.totals.bounces}</b><span>bounced</span></div>
         <div class="mstat"><b data-metric-today>{todayDeliveries}</b><span>today</span></div>
@@ -96,19 +96,19 @@ const runs = mailRuns(threads, office);
       </p>
     </section>
 
-    <div class="pm-rule night" id="conversations"><span>The conversations</span></div>
+    <div class="pm-rule night" id="conversations"><span>The letter threads</span></div>
     <div class="mail-toolbar">
       <div class="tb-left">
         <button type="button" class="filter-btn" data-filter-toggle aria-expanded="false" aria-controls="mail-filter">
           <span class="funnel" aria-hidden="true">⧩</span> Filter
         </button>
       </div>
-      <a class="office-link" href="/mail/office/">the office's traffic ({runs.office.length.toLocaleString("en-US")}) →</a>
+      <a class="office-link" href="/mail/office/">the office's letter threads ({runs.office.length.toLocaleString("en-US")}) →</a>
     </div>
 
     <!-- FILTER PANEL — folded in from the old explorer; same query contract -->
     <form class="filter-panel" id="mail-filter" data-filter-panel autocomplete="off" hidden>
-      <p class="fp-scope">The filter searches every letter the town has carried, on every page — not only the conversations listed below.</p>
+      <p class="fp-scope">The filter searches every letter the town has carried, on every page — not only the letter threads listed below.</p>
       <div class="fp-row">
         <label class="fp-field fp-grow">
           <span>Search</span>
@@ -141,8 +141,8 @@ const runs = mailRuns(threads, office);
       </div>
       <div class="fp-row fp-row-end">
         <label class="fp-field fp-grow">
-          <span>Thread id</span>
-          <input type="text" name="thread" placeholder="a letter id that names a conversation" />
+          <span>Letter thread id</span>
+          <input type="text" name="thread" placeholder="a letter id that names a letter thread" />
         </label>
         <label class="office-toggle">
           <input type="checkbox" data-office-toggle />
@@ -297,7 +297,7 @@ const runs = mailRuns(threads, office);
       statusEl.textContent = "Loading the mail…";
       const ok = await ensureLetters();
       if (!ok) {
-        statusEl.innerHTML = 'The mail index could not be loaded right now — <a href="/mail/">the conversations</a> still browse every letter, a page at a time.';
+        statusEl.innerHTML = 'The mail index could not be loaded right now — <a href="/mail/">the letter threads</a> still browse every letter, a page at a time.';
         resultsEl.innerHTML = "";
         return;
       }
@@ -417,6 +417,9 @@ const runs = mailRuns(threads, office);
     .mail-head .how { max-width: 62ch; margin: 0 auto; color: #cdc2ab; font-size: 0.95rem; }
     .mail-head .how a { color: var(--pm-gold); }
     .mail-head .how b { color: var(--pm-gold); }
+    /* POS-1051: the writing-gate note sits in the header's own centred column (the same 62ch as the paragraph above it), not left-
+       aligned at 46ch off to one side. Scoped to this header: the note's other hosts keep their own alignment. */
+    .mail-head :global(.write-gate-note) { max-width: 62ch; margin-left: auto; margin-right: auto; text-align: center; }
     .mail-compose-cta { margin: 1.1em 0 0; }
     .mail-compose-cta .pm-btn { font-size: 0.82rem; padding: 9px 20px; }
 

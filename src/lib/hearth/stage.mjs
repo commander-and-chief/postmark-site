@@ -41,6 +41,7 @@ import { notYours, meAnswered } from "./not-yours.mjs";
 import { designNote, readSavedHearth } from "./choice.mjs";
 import { mountHearthPicker } from "./picker.mjs";
 import { bindListbox, paintListbox } from "./listbox.mjs";
+import { mountHearthBacking } from "./backing.mjs";
 
 import { DEFAULT_ENTRY as DEFAULT } from "./slots.mjs";
 
@@ -166,16 +167,17 @@ export function mountHearth(root, { loadScript } = {}) {
   let loadSeq = 0;
   async function load() {
     const own = mine();
-    const key = own.join(",");
-    if (reads && key === readFor) { draw(); return; }
-    readFor = key;
+    const who = own.join(",");
+    if (reads && who === readFor) { draw(); return; }
+    readFor = who;
     const seq = ++loadSeq;
     const still = readingOf(reads);
     const progressive = !reads || still.residents.length > 0 || still.house.length > 0;
     // the posts are read once, beside the house's reads, and painted when they land; the part keeps its placeholder until then
     if (!extras && !extrasAsked) { extrasAsked = true; readHearthExtras().then((x) => { extras = x; draw(); }); }
+    // the house's canonical key (the registry's slug, data-hearth-key), which the one aggregate read asks by; the display slug is not it
     const done = await readHouse(handles, {
-      token: own.length ? token() : null, mine: own,
+      key, token: own.length ? token() : null, mine: own,
       onProgress: progressive ? (snapshot) => { if (seq === loadSeq) { reads = snapshot; draw(); } } : null,
     });
     if (seq !== loadSeq || progressive) return;   // a newer read has taken over (this one's answer is stale), or the last progress was this answer and is drawn
@@ -201,6 +203,7 @@ export function mountHearth(root, { loadScript } = {}) {
     startScript(entry);
     if (picker) { picker.value = entry.id; paintListbox(pickerRoot); }
     root.dataset.hearthShowing = entry.id;
+    backing?.show(entry.id);
     say(asked && asked !== entry.id ? `No Hearth entry is registered as “${asked.slice(0, 40)}”; showing ${entry.title}.` : "");
     ctx.expanded = false;
     draw();
@@ -263,6 +266,12 @@ export function mountHearth(root, { loadScript } = {}) {
   document.addEventListener("pm:lens", () => { load(); mounted?.refresh(); paintStrip(); });
   paintStrip();
 
+  // "BACK THIS DESIGN" (POS-1066 B): beside the dropdown, for ANY reader, while the Hearth ballot is staking; it backs the design ON SCREEN, so it is
+  // told each one the stage draws. Its own module decides when it shows and holds /votes/'s stake form; nothing of the house's (the save gate
+  // `signedIn`, the house's handles, the bearer) is handed to it, and nothing of it to the design's script.
+  const backingRoot = bar?.querySelector("[data-hearth-backing]") ?? null;
+  const backing = backingRoot ? mountHearthBacking(backingRoot) : null;
+
   let asked = null;
   try { asked = new URL(location.href).searchParams.get("entry"); } catch { asked = null; }
   // the page was drawn on the server with the entry it opens on (the default); asked for that same one, there is nothing to redraw
@@ -271,6 +280,7 @@ export function mountHearth(root, { loadScript } = {}) {
     mountBehaviors(stage);
     startScript(first);
     root.dataset.hearthShowing = first.id;
+    backing?.show(first.id);
     say(asked && asked !== first.id ? `No Hearth entry is registered as “${asked.slice(0, 40)}”; showing ${first.title}.` : "");
   } else compose(asked, { asked });   // whichDesign answers for "nothing asked": the default today, a saved choice later (POS-962 folds it into the one function)
   load();

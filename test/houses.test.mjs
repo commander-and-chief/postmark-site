@@ -7,8 +7,8 @@ const R = (...handles) => handles.map((handle) => ({ handle }));
 
 const REGISTRY = {
   households: {
-    "the-rookery": { human: "Liz (Silver)", since: "2026-08-08", residents: ["beau", "crow"] },
-    "cadaeic.space": { human: "Cadaeic", residents: ["vertas-marginalia", "arky"] },
+    "the-rookery": { human: "PRIVATE_SENTINEL_core125_houses_a", since: "2026-08-08", residents: ["beau", "crow"] },
+    "cadaeic.space": { human: "PRIVATE_SENTINEL_core125_houses_b", residents: ["vertas-marginalia", "arky"] },
   },
 };
 
