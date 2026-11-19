@@ -4,6 +4,7 @@
 import { readFileSync, readdirSync, existsSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { buildThreads, normalizeProfile, parseFrontmatter, readResidentProfiles } from "./town.mjs";
+import { publicRegistry } from "./public-registry.mjs";
 
 export const RESIDENT_CARD_LANES = 6;
 
@@ -1085,7 +1086,8 @@ export async function buildOfficeData({
   const renamesRead = await fetchHouseholdsRead({ apiBase, fetchImpl, retries, gate });
   const renames = renamesRead.missing ? readSnapshot("renames.json", {}) : renamesRead.renames;
   if (renamesRead.missing) endpointGaps.push(RENAMES_GAP);
-  const households = renamesRead.registry ?? readSnapshot("households.json", { schema_version: 1, households: {} });
+  // The registry is committed and served, in a public repo: only its public keys are written (CORE-125).
+  const households = publicRegistry(renamesRead.registry ?? readSnapshot("households.json", { schema_version: 1, households: {} }));
   if (!renamesRead.missing && !renamesRead.registry) endpointGaps.push(HOUSEHOLDS_GAP);
 
   let meeps = null;

@@ -408,6 +408,8 @@ test("EVERY MOVED URL IS ONE ROW OF ONE TABLE, and lands on a page that exists",
     "/archive/": "/projects/",
     "/board/": "/town/#board",
     "/stamps/guide/": "/docs/stamps/",
+    "/yt/": "/?from=youtube",
+    "/tt/": "/?from=tiktok",
   });
   for (const [from, to] of Object.entries(MOVED)) {
     assert.ok(pageFileFor(to), `${from} forwards to ${to}, which no page serves`);
@@ -545,7 +547,22 @@ test("every moved path builds a forward, and every forward lands", { skip: !exis
     assert.ok(existsSync(file), `${from} did not build`);
     const s = readFileSync(file, "utf8");
     assert.ok(s.includes(`content="0;url=${to}"`), `${from} does not forward to ${to}`);
-    assert.ok(existsSync(builtPage(to.split("#")[0])), `${from} forwards to ${to}, which did not build`);
+    assert.ok(existsSync(builtPage(to.split("#")[0].split("?")[0])), `${from} forwards to ${to}, which did not build`);
+  }
+});
+
+test("THE BUILT SHORTS DOORS (POS-1124) — /yt/ and /tt/ land on the front page with their tag, from the script and the no-script refresh", { skip: !existsSync(builtPage("/yt/")) }, () => {
+  for (const [door, to] of [["/yt/", "/?from=youtube"], ["/tt/", "/?from=tiktok"]]) {
+    const page = readFileSync(builtPage(door), "utf8");
+    const js = [...page.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).find((x) => x.includes("location.replace"));
+    assert.ok(js, `${door} carries no forwarding script`);
+    const went = [];
+    // a hostile incoming query/hash is not read as a destination: only the fixed target (and the hash) goes
+    runInNewContext(js, { location: { hash: "", search: "?next=https://evil.example/&from=reddit", replace: (u) => went.push(u) } });
+    assert.deepEqual(went, [to], `${door} script`);
+    assert.ok(page.includes(`content="0;url=${to}"`), `${door} no-script refresh`);
+    assert.ok(page.includes(`<link rel="canonical" href="https://postmark.town/">`), `${door} canonical is the front page`);
+    assert.ok(!/https?:\/\/(?!postmark\.town)/.test(page.replace(/<link rel="canonical"[^>]*>/, "")), `${door} names no other origin`);
   }
 });
 
