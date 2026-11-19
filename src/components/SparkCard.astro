@@ -24,8 +24,10 @@ interface Props {
   link?: boolean;
   /** the approved empty "Flares from this spark" place (no flare data exists yet); false where the page draws a bigger one */
   flares?: boolean;
+  /** the gallery's event / "no event named" line, drawn INSIDE an unpictured card (a pictured card is the picture and its one caption, and takes none) */
+  eventLine?: string | null;
 }
-const { spark: s, roll = new Set(), root = false, link = true, flares = true } = Astro.props;
+const { spark: s, roll = new Set(), root = false, link = true, flares = true, eventLine = null } = Astro.props;
 const pic = pictureOf(s);
 const by = typeof s?.credit?.by === "string" ? s.credit.by : null;
 const household = typeof s?.credit?.household === "string" ? s.credit.household : null;
@@ -90,6 +92,7 @@ const big = !!pic && !link;
         {CATALOGUE_WORDS.flaresNone}
       </p>
     )}
+    {eventLine && <p class="spark-eventline soft" data-spark-event>{eventLine}</p>}
   </div>
 </article>
 )}
@@ -106,6 +109,7 @@ const big = !!pic && !link;
   .spark-credit, .spark-when, .spark-rooms { margin: 0.25em 0; font-size: 0.9rem; overflow-wrap: anywhere; }
   .spark-flares { margin: 0.55em 0 0; padding: 0.4em 0.6em; border: 1px dashed var(--pm-line); border-radius: 6px; font-size: 0.88rem; color: var(--pm-ink-soft); }
   .spark-flares b { color: var(--pm-ink); }
+  .spark-eventline { margin: 0.55em 0 0; font-size: 0.85rem; overflow-wrap: anywhere; }
   .spark-card .soft { color: var(--pm-ink-soft); }
   .spark-card a { color: var(--pm-wax); text-decoration: underline; }
   /* the whole-card link: the headline anchor's ::after covers the card (picture, background, text); the other links are lifted above it */

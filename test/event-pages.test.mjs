@@ -603,7 +603,21 @@ test("BUILT: /sparks/ (register read OK) lists ONLY the register's Sparks, once 
   }
   const cells = html.split("data-spark-cell ").slice(1);
   assert.ok(cells.some((c) => c.includes('data-has-picture="1"')), "the fixture has a pictured card");
-  for (const c of cells) assert.equal(c.includes('data-has-picture="1"') && c.split("</div>")[0].includes("spk-tag"), false, "no second metadata row under a pictured card");
+  assert.equal(html.includes("spk-tag"), false, "the old sibling tag row is gone");
+  for (const c of cells) {
+    const [inCard, afterCard = ""] = [c.slice(0, c.indexOf("</article>")), c.slice(c.indexOf("</article>"))];
+    if (c.includes('data-has-picture="1"')) assert.equal(c.includes("data-spark-event"), false, "a pictured card is the picture and one caption: no event line on it or under it");
+    else {
+      // CORE-121 (Darko 15:36 EST): an unpictured card carries its event / 'no event named' line INSIDE the card, never as a sibling below its border
+      assert.ok(inCard.includes("data-spark-event"), "the unpictured card's event line is inside its card");
+      assert.equal(afterCard.includes("data-spark-event"), false, "and nothing of it sits outside the card");
+    }
+  }
+  // the row: the cells of a row share its height and a card fills its cell with no margin of its own (pinned from the page's own styles)
+  const gallery = readFileSync(join(ROOT, "town/pages/sparks/index.astro"), "utf8");
+  assert.doesNotMatch(gallery.match(/\.spk-grid \{[^}]*\}/)[0], /align-items:\s*start/, "the grid no longer pins cards to the top of a taller row");
+  assert.match(gallery, /\.spk-cell \{[^}]*display: flex;/);
+  assert.match(gallery, /\.spk-cell > :global\(\.spark-card\) \{[^}]*flex: 1 1 auto;[^}]*margin: 0;/, "a card fills its cell and has no margin of its own");
   assert.doesNotMatch(html, /harvest-supper-pending-test|withdrawn-one-test|before-the-record-test/, "a pending/withdrawn reference is not a Spark here");
   assert.match(html, /data-spark-filters/); for (const f of SPARK_FILTERS) assert.ok(html.includes(`data-filter="${f.key}"`), f.key);
   assert.equal((html.match(/data-has-event="0"/g) ?? []).length, 2, "the register's eventless Sparks are drawn, the lamp among them");

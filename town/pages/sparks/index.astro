@@ -49,11 +49,10 @@ const eventTitle = (entry) => eventOfSpark(entry, calendar, eventsData)?.event?.
         <div class="spk-grid" data-spark-grid>
           {entries.map((entry) => (
             <div class="spk-cell" data-spark-cell data-has-event={entry.eventId !== null ? "1" : "0"} data-has-picture={pictureOf(entry.spark) ? "1" : "0"}>
-              <SparkCard spark={entry.spark} roll={roll} />
-              {/* a PICTURED card is the picture and one caption (Darko 13:14 EST): no second metadata row under it; its event is on its page */}
-              {!pictureOf(entry.spark) && (entry.eventId !== null
-                ? <p class="spk-tag" data-spark-event>event: {eventTitle(entry) ?? entry.eventId}</p>
-                : <p class="spk-tag" data-spark-event>no event named</p>)}
+              {/* a PICTURED card is the picture and one caption (Darko 13:14 EST): no second metadata row on it, its event is on its page. An UNPICTURED card
+                  carries its event / "no event named" line INSIDE the card (Darko 15:36 EST: "the line inside it"), never as a sibling under it. */}
+              <SparkCard spark={entry.spark} roll={roll}
+                eventLine={pictureOf(entry.spark) ? null : (entry.eventId !== null ? `event: ${eventTitle(entry) ?? entry.eventId}` : "no event named")} />
             </div>
           ))}
         </div>
@@ -97,9 +96,16 @@ const eventTitle = (entry) => eventOfSpark(entry, calendar, eventsData)?.event?.
     .spk-filter { font: inherit; padding: 0.3em 0.9em; border: 1px solid var(--pm-wax, #b4561f); border-radius: 999px; background: transparent; color: inherit; cursor: pointer; }
     .spk-filter.on { background: var(--pm-wax, #b4561f); color: #fff; font-weight: 700; }
     .spk-filter:focus-visible { outline: 3px solid var(--pm-wax, #b4561f); outline-offset: 2px; }
-    .spk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 1rem; align-items: start; }
+    /* A CARD SITS IN ITS ROW (Darko 15:36 EST: "a card with no picture is taller than its row"): the cells of a row share its height and each card fills its cell
+       exactly (no margin of its own, the grid's gap is the only space), so a card never stands taller than, or past, its row. A pictured card keeps its picture
+       whole and edge to edge in width; any extra height a taller neighbour gives the row is the picture's own dark well, the caption stays at the bottom. */
+    .spk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 1rem; }
+    .spk-cell { display: flex; min-width: 0; }
     .spk-cell[hidden] { display: none; }
-    .spk-tag { margin: -0.4em 0 0.8em; font-size: 0.85rem; opacity: 0.85; }
+    .spk-cell > :global(.spark-card) { flex: 1 1 auto; margin: 0; min-width: 0; }
+    .spk-cell > :global(.spark-card.is-image-card) { display: flex; flex-direction: column; align-items: stretch; }
+    .spk-cell > :global(.spark-card.is-image-card .spark-pic) { flex: 1 1 auto; display: flex; align-items: center; background: #11161d; }
+    .spk-cell > :global(.spark-card.is-image-card .spark-pic img) { flex: 0 0 auto; }
     .spk-partial { margin: 1rem 0; max-width: 46rem; }
   </style>
 </PostmarkLayout>
