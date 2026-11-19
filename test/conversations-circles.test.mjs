@@ -304,7 +304,8 @@ test(`READER (${readerNote}): the room's top circles come in the order they star
     assert.equal(await p.evalJs(`${CARD}.querySelector(".c-voices").hidden`), true, "the flat transcript steps aside");
     assert.equal(await p.evalJs(`${CARD}.querySelectorAll("[data-yours], [data-your-circle]").length`), 0, "no invented 'your circle'");
     // the visitor picks one; a poll with new talk must not rebuild the reader or take their place
-    await p.evalJs(`document.querySelector('[data-circle-stub][data-circle="50107"]').focus(); window.__keep = { root: ${CARD}.querySelector("[data-circle-reader]"), btn: document.activeElement }; true`);
+    // the published reader (WLD-178, S180): a room's circle is a list item with its OWN "Open" button; that button is what a visitor focuses
+    await p.evalJs(`document.querySelector('[data-circle-open="50107"]').focus(); window.__keep = { root: ${CARD}.querySelector("[data-circle-reader]"), btn: document.activeElement }; true`);
     const asked = p.calls.filter((c) => c.path.startsWith("/world/conversations?room=")).length;
     state.live = [thread({ voice_count: 15, latest: "2026-11-14T20:16:00.000Z" })];
     await p.tick();
@@ -314,38 +315,66 @@ test(`READER (${readerNote}): the room's top circles come in the order they star
     assert.ok(p.calls.filter((c) => c.path.startsWith("/world/conversations?room=")).length > asked, "the poll refreshed the reader's room, by the office's own read");
     assert.equal(await p.evalJs(`${CARD}.querySelector("[data-circle-reader]") === window.__keep.root`), true, "the reader is the same node");
     // the reader redraws its buttons and puts focus back on the equivalent one (by its stable key): the visitor is where they left themselves
-    assert.equal(await p.evalJs(`document.activeElement?.getAttribute("data-key")`), "stub-50107", "the keyboard focus is where the visitor left it");
+    assert.equal(await p.evalJs(`document.activeElement?.getAttribute("data-key")`), "open-50107", "the keyboard focus is where the visitor left it");
     assert.equal(await p.evalJs(`document.activeElement.isConnected && ${CARD}.contains(document.activeElement)`), true, "on a live button inside the same card");
   } finally { await p.close(); }
 });
 
-test(`FALSIFIER (${readerNote}): a forked room with flat strands and paged history is not one flattened transcript, and no statement is lost at the page fold`, async () => {
+test(`FALSIFIER (${readerNote}): a forked room with paged history is a comment thread (each say inside the say it replied to), not one flattened transcript, and no statement is lost at the page fold`, async () => {
   const { b, base } = await boot(true);
   const state = { live: [thread()], room: (id) => roomFind(id) };
   const p = await openPage(b, base, { office: makeOffice(state) });
   try {
     if (!HAS_READER) { await p.until(`(${FLAT_NOTE}) !== null`, "the floor"); return; }
     await p.until(MOUNTED, "the reader mounted");
-    await p.evalJs(`document.querySelector('[data-circle-stub][data-circle="50101"]').click(); true`);
+    await p.evalJs(`document.querySelector('[data-circle-open="50101"]').click(); true`);
     await p.until(`!!${CARD}.querySelector("[data-circle-reader][data-state=circle]")`, "circle 50101 open");
     assert.ok((await p.evalJs(`!!${CARD}.querySelector("[data-crumbs]")`)), "a named path back to the room");
-    // page 1 of 2: the office served `next`; the reader offers it, and follows ONLY that
-    const says = (js) => p.evalJs(`[...${CARD}.querySelectorAll("[data-say]")].map((s) => Number(s.dataset.say))`);
-    assert.deepEqual((await says()).sort(), [50101, 50102, 50103, 50104, 50105, 50106], "page one's says, all of them");
+    // THE PUBLISHED READER IS A CLASSIC COMMENT THREAD (WLD-178, Darko 2026-11-19 13:19–13:39): a statement carries its replies folded under it ("View N
+    // replies"), a reply opens its own thread, and the circle is that nesting. The old fork/flat-strand drawing predates the accepted shape, so what this proves
+    // now is that the nesting IS the served ancestry (each say sits inside the say it replied to, as the office served `reply_to`), that nothing is lost at
+    // the page fold, and that opening is the visitor's act.
+    const says = () => p.evalJs(`[...${CARD}.querySelectorAll("[data-say]")].map((s) => Number(s.dataset.say))`);
+    // a visitor opens every folded thread (the thread's circle on its line), until none is folded
+    const openAll = async () => {
+      for (let i = 0; i < 20; i++) {
+        const folded = await p.evalJs(`(() => { const t = [...${CARD}.querySelectorAll('[data-thread][data-open="false"] > [data-thread-dot]')]; t.forEach((d) => d.click()); return t.length; })()`);
+        if (!folded) return;
+      }
+      assert.fail("threads kept appearing folded after 20 rounds of opening");
+    };
+    // page 1 of 2, folded: the circle's opening statement alone, its replies one "View N replies" away (the count the reader drew from page one's lines)
+    assert.deepEqual(await says(), [50101], "everything starts folded: only the circle's own opening statement shows");
+    assert.equal(await p.evalJs(`${CARD}.querySelectorAll("[data-thread-list]").length`), 1, "the thread list");
+    assert.equal(await p.evalJs(`${CARD}.querySelector('[data-thread="t-50101"] [data-thread-view]').textContent.trim()`), "View 5 replies", "page one's five replies, folded under the opener");
+    assert.equal(await p.evalJs(`${CARD}.querySelector('[data-thread="t-50101"]').dataset.open`), "false");
+    // the office served `next`; the reader offers it, and follows ONLY that
     await p.until(`!!${CARD}.querySelector("[data-next]")`, "the continuation the office served");
+    await openAll();
+    assert.deepEqual((await says()).sort(), [50101, 50102, 50103, 50104, 50105, 50106], "page one's says, all of them, once opened");
     await p.evalJs(`${CARD}.querySelector("[data-next]").click(); true`);
-    await p.until(`${CARD}.querySelectorAll("[data-say]").length === 10`, "page two loaded");
+    await p.until(`!${CARD}.querySelector("[data-next]") && ${CARD}.querySelectorAll('[data-thread][data-open="false"]').length > 0`, "page two loaded (its threads folded)");
+    await openAll();
+    await p.until(`${CARD}.querySelectorAll("[data-say]").length === 10`, "page two's says, opened");
     assert.deepEqual((await says()).sort(), [50101, 50102, 50103, 50104, 50105, 50106, 50110, 50111, 50112, 50113], "every statement of the circle: none lost at the fold");
     const asked = p.calls.map((c) => c.path).filter((x) => x.includes("circle=50101"));
     assert.deepEqual(asked, ["/world/conversations?circle=50101", `/world/conversations?circle=50101&after=${WHOLE[5].id}`], "only served continuations were asked");
-    // the circle is its structure, not a flat list: a fork at the opener, strands drawn flat
-    assert.ok(await p.evalJs(`${CARD}.querySelectorAll("[data-fork]").length >= 1`), "the fork at 50101 is a fork");
-    const strands = await p.evalJs(`[...${CARD}.querySelectorAll("[data-strand]")].map((u) => [...u.querySelectorAll("[data-say]")].map((s) => Number(s.dataset.say)))`);
-    assert.ok(strands.some((s) => s.join() === "50102,50103,50104"), "the seth/pica back-and-forth is one flat strand");
-    assert.ok(strands.some((s) => s.join() === "50112,50113"), "and so is amia/pica");
+    // THE ANCESTRY: every say is drawn inside the say it replied to (the served `reply_to`), the opener inside nothing: not a flattened transcript
+    const served = Object.fromEntries(WHOLE.map((l) => [l.id, l.reply_to ?? null]));
+    const drawn = await p.evalJs(`Object.fromEntries([...${CARD}.querySelectorAll("li[data-say]")].map((li) => [li.dataset.say, li.parentElement.closest("li[data-say]")?.dataset.say ?? null]))`);
+    assert.deepEqual(Object.fromEntries(Object.entries(drawn).map(([k, v]) => [Number(k), v === null ? null : Number(v)])), served, "each say sits inside the say the office served it as a reply to");
+    // the fork at the opener: its direct replies are exactly the three the office served, in served order
+    assert.deepEqual(await p.evalJs(`[...${CARD}.querySelectorAll('[data-thread="t-50101"] > ul > li[data-say]')].map((li) => Number(li.dataset.say))`),
+      WHOLE.filter((l) => l.reply_to === 50101).map((l) => l.id), "the opener's direct replies, as served");
+    // the seth/pica back-and-forth is a chain, each reply opening its own thread: 50104 is three deep, 50111 four
+    const depthOf = (id) => { let d = 0; for (let at = served[id]; at !== null; at = served[at]) d += 1; return d; };
+    const depths = await p.evalJs(`Object.fromEntries([...${CARD}.querySelectorAll("li[data-say]")].map((li) => { let d = 0; for (let n = li.parentElement.closest("li[data-say]"); n; n = n.parentElement.closest("li[data-say]")) d += 1; return [li.dataset.say, d]; }))`);
+    for (const l of WHOLE) assert.equal(depths[l.id], depthOf(l.id), `say ${l.id} is drawn ${depthOf(l.id)} deep`);
+    assert.equal(depths[50104], 3); assert.equal(depths[50111], 4);
     assert.equal(await p.evalJs(`${CARD}.querySelectorAll("[data-loose]").length`), 0, "no say was re-parented or left loose");
-    // CONTROL: a naive flatten of these 10 says is ONE list in id order; the page's drawing differs from it
-    assert.ok(strands.length >= 3, "more than one strand: not a single flattened transcript");
+    // CONTROL: a naive flatten of these 10 says is ONE list in id order; the page's drawing is not (several parents, several depths)
+    assert.ok(new Set(Object.values(drawn)).size >= 5, "more than one parent: not a single flattened transcript");
+    assert.ok(new Set(Object.values(depths)).size >= 4, "more than one depth");
   } finally { await p.close(); }
 });
 
@@ -419,15 +448,22 @@ test(`REPLY (${readerNote}): a Reply button on a circle's own line sets the targ
   try {
     if (!HAS_READER) { await out.until(`(${FLAT_NOTE}) !== null`, "the floor"); return; }
     await out.until(MOUNTED, "the reader (signed out)");
-    await out.evalJs(`document.querySelector('[data-circle-stub][data-circle="50101"]').click(); true`);
+    await out.evalJs(`document.querySelector('[data-circle-open="50101"]').click(); true`);
     await out.until(`${CARD}.querySelectorAll("[data-say]").length > 0`, "a circle open");
+    // open the opener's replies too, so the check is over every line a visitor can reach (the thread is folded until opened)
+    await out.evalJs(`${CARD}.querySelector('[data-thread="t-50101"] > [data-thread-dot]').click(); true`);
+    await out.until(`${CARD}.querySelectorAll("[data-say]").length > 1`, "the opener's replies, opened");
     assert.equal(await out.evalJs(`document.querySelectorAll("[data-reply]").length`), 0, "no Reply for a visitor");
   } finally { await out.close(); }
   const inn = await openPage(b, base, { office: makeOffice(state), signedIn: true });
   try {
     await inn.until(MOUNTED, "the reader (signed in)");
     await inn.until(SAY, "the speak box");
-    await inn.evalJs(`document.querySelector('[data-circle-stub][data-circle="50101"]').click(); true`);
+    await inn.evalJs(`document.querySelector('[data-circle-open="50101"]').click(); true`);
+    await inn.until(`!!${CARD}.querySelector('[data-thread="t-50101"] > [data-thread-dot]')`, "the opener's thread");
+    // say 50105 is a reply to the opener, so it is reached the way a visitor reaches it: by opening the opener's thread
+    assert.equal(await inn.evalJs(`!!${CARD}.querySelector('[data-reply="50105"]')`), false, "folded: not reachable yet");
+    await inn.evalJs(`${CARD}.querySelector('[data-thread="t-50101"] > [data-thread-dot]').click(); true`);
     await inn.until(`!!${CARD}.querySelector('[data-reply="50105"]')`, "Reply on say 50105");
     await inn.evalJs(`${CARD}.querySelector('[data-reply="50105"]').click(); true`);
     assert.equal(await inn.evalJs(`document.querySelector("[data-say-reply-text]").textContent`), "replying to claran: Who painted the sign outside?");
