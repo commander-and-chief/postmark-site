@@ -89,6 +89,7 @@ import houseRegistry from "@/data/postmark/households.json";
 import meeps from "@/data/postmark/meeps.json";
 // POS-1066 A: the Hearth ballot's designs, each to its live preview on its author's own house (the map is the build's; hearth/ballot-links.mjs)
 import { hearthPreviews } from "@/lib/hearth/ballot-previews.mjs";
+import { hearthTitles } from "@/lib/hearth/ballot-titles.mjs";
 import bulletin from "@/data/postmark/bulletin.json";
 import questPosts from "@/data/postmark/quest-posts.json";
 import questRegistry from "@/data/postmark/quest-registry.json"; // POS-954: the town's quest registry, the office board's own source (monthly quests)
@@ -1226,7 +1227,7 @@ const switchCss = [
           opened, and <a href="/votes/">the Ballot Box</a> is the full view: each
           ballot whole, the past ones, and every way to back a design.
         </p>
-        <div class="bp" data-ballot-panel aria-live="polite" aria-busy="true" data-hearth-previews={JSON.stringify(hearthPreviews)}>
+        <div class="bp" data-ballot-panel aria-live="polite" aria-busy="true" data-hearth-previews={JSON.stringify(hearthPreviews)} data-hearth-titles={JSON.stringify(hearthTitles)}>
           <p class="bp-note">Reading the ballot box…</p>
           <noscript><p class="bp-note">The open ballots are read in your browser. With scripts off, <a href="/votes/">the Ballot Box</a> has them.</p></noscript>
         </div>
@@ -1425,10 +1426,12 @@ const switchCss = [
 <script>
   import { mountBallotPanel } from "@/lib/ballot-panel.mjs";
   import { readPreviews } from "@/lib/hearth/ballot-links.mjs";
+  import { readTitles } from "@/lib/hearth/ballot-caption.mjs";
 
   const host = document.querySelector("[data-ballot-panel]");
   // POS-1066 A: the build's Hearth preview map, read back (only its own links survive): a Hearth ballot design links to its live preview
-  mountBallotPanel(host, { previews: readPreviews(host?.getAttribute("data-hearth-previews")) });
+  // CORE-126: and the build's id -> authored title map: a Hearth design reads "<title>, by <household>" (unknown titles keep the raw id)
+  mountBallotPanel(host, { previews: readPreviews(host?.getAttribute("data-hearth-previews")), titles: readTitles(host?.getAttribute("data-hearth-titles")) });
 </script>
 
 <style>
