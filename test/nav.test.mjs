@@ -94,13 +94,13 @@ for (const f of everyPageFile()) {
   CLAIMED.get(k).add(f);
 }
 
-const SEATS = ["Postmark", "The Town", "The World", "The Mail", "The Households", "Docs", "Join"];
+const SEATS = ["Postmark", "The Town", "The World", "The Mail", "Sparks", "The Households", "Docs", "Join"];
 
 // ── THE SHAPE ────────────────────────────────────────────────────────────────
 
-test("SEVEN SEATS: Postmark · The Town · The World · The Mail · The Households · Docs · Join", () => {
+test("EIGHT SEATS: Postmark · The Town · The World · The Mail · Sparks · The Households · Docs · Join (CORE-121 added Sparks, Darko's drawn entry)", () => {
   assert.deepEqual(RAIL.map((s) => s.label), SEATS, `the rail reads: ${RAIL.map((s) => s.label).join(" · ")}`);
-  assert.deepEqual(RAIL.map((s) => s.href), ["/", "/bulletin/", "/world/", "/mail/", "/households/", "/docs/", "/join/"]);
+  assert.deepEqual(RAIL.map((s) => s.href), ["/", "/bulletin/", "/world/", "/mail/", "/sparks/", "/households/", "/docs/", "/join/"]);
   // Join keeps its lantern (Keemin, 2026-07-31: a newcomer must find Join
   // without hunting), and no seat is external — the harbor is a chip.
   assert.equal(RAIL.find((s) => s.key === "join").lantern, true, "Join lost its lantern");
@@ -123,7 +123,7 @@ test("each seat's row, in Keemin's words and order", () => {
   assert.deepEqual(row("world"), ["the living map", "conversations", "replay", "the atlas", "the harbor · beyond the water"]);
   assert.deepEqual(row("docs"), ["the docs", "stamps", "the numbers", "the repos"]);
   // a seat whose family is one read wears no row
-  for (const k of ["postmark", "mail", "households", "join"]) assert.equal(chipsFor(k), null, `${k} grew a row`);
+  for (const k of ["postmark", "mail", "sparks", "households", "join"]) assert.equal(chipsFor(k), null, `${k} grew a row`);
 });
 
 // ── rule 1: a read per page ──────────────────────────────────────────────────

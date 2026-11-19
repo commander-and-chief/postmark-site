@@ -130,7 +130,7 @@ test("each page with a picture of its own passes it", () => {
     "mail/[thread]/older/[part].astro": "handlesPreview(",
     "mail/with/[pair].astro": "handlesPreview(",
     "mail/with/[pair]/older/[part].astro": "handlesPreview(",
-    "calendar/[host]/[slug].astro": "handlesPreview(",
+    "events/[host]/[slug].astro": "handlesPreview(",     // CORE-82: the event page moved from calendar/[host]/[slug].astro
   };
   // until 2026-11-17 (POS-1085) the four mail pages picked in their own text; they build their
   // share card in src/lib/mail-routes.mjs now and the page only hands it on (its prop)
