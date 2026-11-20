@@ -17,8 +17,8 @@ const R = (h) => ({ handle: h });
 
 test("the fold carries the three public fields and no more: nothing of the private human or the row", () => {
   const registry = { households: {
-    "lantern-row": { name: "Lantern Row", human: "A. Realname", accounts: [{ id: 1, login: "private-login" }], email: "x@example.test",
-      human_profile: { town_name: "Marlow", pronouns: "they/them", short_line: "Keeps the lamps.", login: "private-login", human: "A. Realname", email: "x@example.test" },
+    "lantern-row": { name: "Lantern Row", human: "PRIVATE_SENTINEL_realname", accounts: [{ id: 1, login: "private-login" }], email: "x@example.test",
+      human_profile: { town_name: "Marlow", pronouns: "they/them", short_line: "Keeps the lamps.", login: "private-login", human: "PRIVATE_SENTINEL_realname", email: "x@example.test" },
       residents: ["rei", "jetto"] },
   } };
   const { bySlug, houseOf } = buildHouses([R("rei"), R("jetto")], registry);
@@ -27,7 +27,7 @@ test("the fold carries the three public fields and no more: nothing of the priva
   assert.equal(houseOf.get("rei"), house);
   assert.ok(!("human" in house), "the private name still never enters the fold");
   const text = JSON.stringify(house);
-  for (const leak of ["A. Realname", "private-login", "x@example.test"]) assert.ok(!text.includes(leak), `${leak} is not on the house`);
+  for (const leak of ["PRIVATE_SENTINEL_realname", "private-login", "x@example.test"]) assert.ok(!text.includes(leak), `${leak} is not on the house`);
 });
 
 test("a house that chose nothing has no profile; a house of one with no declaration has none and no entry", () => {
