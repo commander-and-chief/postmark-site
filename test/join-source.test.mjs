@@ -162,6 +162,7 @@ const MAY_NAME_IT = new Map([
   ["src/layouts/PostmarkLayout.astro", "keeps the tag from the link: the block the test above runs"],
   ["src/lib/join-source.mjs", "the keep's lib"],
   ["tools/pos394-render-proof.mjs", "the render proof copies the layout's closure from git, so its SOURCES list names the lib the layout imports"],
+  ["src/data/legal/PRIVACY.md", "the approved privacy policy text (postmark-blueprints PRIVACY.md, shown as it stands, CORE-143) tells readers that links may carry a `?from=tiktok` tag; it is a sentence for people, not a read of the param"],
   ["town/pages/fund/[pot].astro", "a stake form's FormData field named `from` (a resident's handle on a POST), never the URL: checked below"],
 ]);
 
