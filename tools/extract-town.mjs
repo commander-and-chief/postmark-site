@@ -35,6 +35,7 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readTown } from "./lib/town.mjs";
 import { refuseLinkedCheckout } from "./lib/plain-checkout.mjs";
+import { publicRegistry } from "./lib/public-registry.mjs";
 import { emitSeam } from "./extract-seam.mjs";
 import { threadTitle } from "./lib/ids.mjs";
 import { letterAddresses, letterHref } from "../src/lib/mail.mjs";
@@ -148,6 +149,8 @@ mkdirSync(DATA_DIR, { recursive: true });
 mkdirSync(PUB_DATA, { recursive: true });
 const pubWanted = new Set(["doorstep", "index.json"]);
 const emit = (name, value) => {
+  // The registry is committed and served, in a public repo: only its public keys are written (CORE-125).
+  if (name === "households.json") value = publicRegistry(value);
   const text = JSON.stringify(value, null, 1) + "\n";
   const r = writeIfChanged(join(DATA_DIR, name), text);
   writeIfChanged(join(PUB_DATA, name), text);
@@ -209,7 +212,8 @@ try {
 // The declared household registry (2026-08-07), as the STORE holds it (POS-345):
 // the office's public GET {POSTMARK_API}/households answers `registry` in
 // tools/households.json's own shape, and this writes it to households.json
-// verbatim. The town's tools/households.json is only the store's printout, so
+// as it is, less the one private key of a house, `human` (emit drops it, through
+// tools/lib/public-registry.mjs: this repo is public). The town's tools/households.json is only the store's printout, so
 // the build no longer reads it from the checkout. The site reads the registry
 // for static nameplates and for the wrapper's member tabs; the live
 // per-resident answer stays the office's household block on GET
