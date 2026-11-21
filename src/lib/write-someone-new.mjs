@@ -14,14 +14,18 @@
 // WHO IS ELIGIBLE
 //   * the signal is the one that already exists: `last_active`, the office's own-act meaning (POS-481: a say, a walk, a mark, a post, a ballot, a
 //     letter they sent, an edit to their own pages), read only through last-active.mjs's `lastActiveOf`. There is no letter-only or page-edit proxy.
-//   * a resident is "recent" when their own last act is within WINDOW_DAYS (14, Wright's "a couple of weeks") of `now`.
-//   * a house is in the pool when at least one member is recent. A house whose recency the office did not say (`undefined`) is NOT in the pool and is
-//     never presented as "checked and empty": the statuses below say which. A house the office said had no acts (`null`) is not recent either.
+//   * the HOUSEHOLD is what is qualified, by the canonical household reading `houseLastActive(members)` (its newest member act, or null when every member
+//     was said to have no acts, or undefined when the office did not say about everyone): a house is "recent" when that newest act is within
+//     WINDOW_DAYS (14, Wright's "a couple of weeks") of `now`. Once a house qualifies, ANY of its residents may be dealt: a quiet or no-act member of an
+//     active house stays possible (no second, individual activity gate).
+//   * a house whose recency is `undefined` is NOT in the pool and is never presented as "checked and empty": the statuses below say which. That includes
+//     a PARTIAL read such as one member said "no acts" and another not said at all: the house reading is unknown, and so is the status it feeds. A house
+//     the office said had no acts (`null`) is not recent.
 //   * the visitor's own house is left out by the canonical identity the page already keeps: any house that holds one of the signed-in handles
 //     (membership by handle, never by a display name; a solo or renamed house is still that house). An anonymous visitor has no resolved own house and
 //     nothing here claims an exclusion it could not apply.
 //
-// THE DRAW (so a large house gains no extra tickets): one WEIGHTED draw over HOUSES, then one UNIFORM draw among that house's recent members.
+// THE DRAW (so a large house gains no extra tickets): one WEIGHTED draw over HOUSES, then one UNIFORM draw among that house's residents.
 //   weight(house) = (1 + 2^(-ageDays / NEW_HALF_LIFE_DAYS)) * (1 + 1 / (1 + sent / SENT_SCALE))
 //   ageDays = days since the house's EARLIEST member `address.joined` (the actual town-join date; never the agent's `since`, which is when the agent
 //             began elsewhere); an unknown or unparsable join date adds no newness (the first factor is 1), it never counts as "new" or "old".
@@ -106,36 +110,35 @@ export function householdWeight(h, now) {
 }
 
 /**
- * What the page serialises: ONLY the public fields a card needs, never a whole resident or registry object. One entry per house that has a
- * member with a recent-enough known act at `now` (a generous build window, so a page that stands a while still holds whoever could be recent at a
- * click), plus the counts a plain message needs.
+ * What the page serialises: ONLY the public fields a card needs, never a whole resident or registry object. One entry per house whose CANONICAL
+ * household reading (`houseLast`, last-active.mjs's `houseLastActive`) is a real act inside a generous build window (so a page that stands a while still
+ * holds whoever could be recent at a click); it carries that act's time (`at`) and EVERY member a card may be made for. The counts say how many houses'
+ * recency was not said (`unknown`: undefined, including a partial read) and how many were (`known`: an act, or said to have none).
  *
- * @param houses   houseDirectory(...)'s houses ({ key, declared, name, href, members: resident records })
- * @param lastOf   last-active.mjs's lastActiveOf (passed in so this file stays free of imports)
- * @param noteOf   the card's own-written line for a resident (ResidentCard's addressNote rule)
- * @param nameOf   the card's display name for a resident
+ * @param houses     houseDirectory(...)'s houses ({ key, declared, name, href, members: resident records })
+ * @param houseLast  last-active.mjs's houseLastActive: members -> { at } | null | undefined (passed in so this file stays free of imports)
+ * @param noteOf     the card's own-written line for a resident (ResidentCard's addressNote rule)
+ * @param nameOf     the card's display name for a resident
  */
-export function publicHouses(houses, { now, lastOf, noteOf, nameOf, keepDays = 60 }) {
+export function publicHouses(houses, { now, houseLast, noteOf, nameOf, keepDays = 60 }) {
   const out = [];
   let unknown = 0, known = 0;
   for (const h of houses ?? []) {
-    const lasts = (h.members ?? []).map((m) => lastOf(m));
-    if (lasts.every((l) => l === undefined)) { unknown++; continue; }
+    const last = houseLast(h.members ?? []);
+    if (last === undefined) { unknown++; continue; }
     known++;
-    const members = [];
-    (h.members ?? []).forEach((m, i) => {
-      const l = lasts[i];
-      if (!safeHandle(m?.handle) || !l || !recentAt(l, now, keepDays)) return;
-      members.push({ handle: m.handle, name: String(nameOf(m) ?? m.handle), line: String(noteOf(m) ?? ""), at: l.at });
-    });
+    if (!last || !recentAt(last, now, keepDays)) continue;                    // said no acts, or long gone: not a candidate house
+    const members = (h.members ?? []).filter((m) => safeHandle(m?.handle))
+      .map((m) => ({ handle: m.handle, name: String(nameOf(m) ?? m.handle), line: String(noteOf(m) ?? "") }));
     if (!members.length) continue;
     out.push({
       key: String(h.key),
       name: String(h.name ?? ""),
       href: typeof h.href === "string" && SAFE_HOUSE_HREF.test(h.href) ? h.href : null,
+      at: last.at,
       founded: foundedMs(h.members),
       sent: (h.members ?? []).reduce((n, m) => n + Math.max(0, num(m?.counts?.sent)), 0),
-      // every member's handle, so a visitor's own house is recognised by membership even where only some members are recent
+      // every member's handle, so a visitor's own house is recognised by membership
       handles: (h.members ?? []).map((m) => m?.handle).filter(safeHandle),
       members,
     });
@@ -157,11 +160,8 @@ export const isOwnHouse = (h, ownHandles) => {
 export function eligiblePool(data, { now, ownHandles = [], windowDays = WINDOW_DAYS } = {}) {
   const counts = data?.counts ?? { houses: 0, unknown: 0, known: 0 };
   if (counts.known === 0) return { status: "unknown", pool: [] };
-  const recent = [];
-  for (const h of data?.houses ?? []) {
-    const members = (h.members ?? []).filter((m) => safeHandle(m?.handle) && recentAt({ at: m.at }, now, windowDays));
-    if (members.length) recent.push({ ...h, members });
-  }
+  // the HOUSE qualifies by its own newest act (`at`, the canonical household reading); every one of its residents stays dealable
+  const recent = (data?.houses ?? []).filter((h) => recentAt({ at: h.at }, now, windowDays) && (h.members ?? []).some((m) => safeHandle(m?.handle)));
   if (!recent.length) return { status: "none-recent", pool: [] };
   const pool = recent.filter((h) => !isOwnHouse(h, ownHandles));
   if (!pool.length) return { status: "only-yours", pool: [] };

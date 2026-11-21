@@ -32,7 +32,7 @@ import residents from "@/data/postmark/residents.json";
 import registry from "@/data/postmark/households.json";
 import { loadWorldState } from "@/lib/board.mjs";
 import { houseDirectory, marksByAuthor, fold } from "@/lib/households-directory.mjs";
-import { activeWords, houseLastActive, lastActiveOf } from "@/lib/last-active.mjs";
+import { activeWords, houseLastActive } from "@/lib/last-active.mjs";
 import { publicHouses, cardLine, DISCLAIMER } from "@/lib/write-someone-new.mjs";
 import { shownName } from "@/lib/resident-name.mjs";
 import { excerpt } from "@/lib/pm.mjs";
@@ -44,7 +44,7 @@ const houses = houseDirectory(residents, registry, marksByAuthor(world));
 // reader's clock (this page is static; a window counted at the build would go false while it stands). `<` is escaped so no text can close the script.
 const wsn = JSON.stringify(publicHouses(houses, {
   now: Date.now(),
-  lastOf: lastActiveOf,
+  houseLast: houseLastActive,                  // the canonical household reading: an act, null (said none) or undefined (unknown, partial reads included)
   noteOf: (r) => cardLine(r, excerpt),
   nameOf: (r) => shownName(r.address?.agent ?? r.handle),
 })).replace(/</g, "\\u003c");

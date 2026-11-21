@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { houseDirectory } from "../src/lib/households-directory.mjs";
-import { lastActiveOf } from "../src/lib/last-active.mjs";
+import { lastActiveOf, houseLastActive } from "../src/lib/last-active.mjs";
 import { excerpt } from "../src/lib/pm.mjs";
 import { shownName } from "../src/lib/resident-name.mjs";
 import {
@@ -25,7 +25,7 @@ const R = (handle, { agent = handle, joined = "2026-06-01", sent = 0, last, body
   ...(last === undefined ? {} : { last_active: last, ...(last ? { last_active_crossing: 10 } : {}) }),
 });
 const REGISTRY = (rows) => ({ households: Object.fromEntries(Object.entries(rows).map(([slug, residents]) => [slug, { name: slug, residents }])) });
-const build = (residents, rows = {}) => publicHouses(houseDirectory(residents, REGISTRY(rows)), { now: NOW, lastOf: lastActiveOf, noteOf: (r) => cardLine(r, excerpt), nameOf: (r) => shownName(r.address?.agent ?? r.handle) });
+const build = (residents, rows = {}) => publicHouses(houseDirectory(residents, REGISTRY(rows)), { now: NOW, houseLast: houseLastActive, noteOf: (r) => cardLine(r, excerpt), nameOf: (r) => shownName(r.address?.agent ?? r.handle) });
 const seq = (...us) => { let i = 0; return () => us[Math.min(i++, us.length - 1)]; };
 
 test("a household that only walked, said or marked lately (no letters sent) is in the pool; the long-absent and the said-no-acts are not; unknown recency is not 'checked'", () => {
@@ -138,9 +138,42 @@ test("a newer, quieter house is dealt more often than an older, chattier one acr
   assert.ok(count.veteran > N * 0.1, "but the veteran keeps a real share");
 });
 
-test("the dealt member is one of the house's own RECENT members: a recent house's long-absent member is not sent a letter they will never see", () => {
-  const data = build([R("active", { last: ago(1) }), R("absent", { last: ago(200) }), R("unknown-mate")], { hh: ["active", "absent", "unknown-mate"] });
-  for (const u of [0, 0.3, 0.6, 0.99]) assert.equal(deal(data, { now: NOW, rng: seq(0, u, 0) }).handle, "active");
+test("the HOUSEHOLD is qualified, then any resident of it may be dealt: a quiet, long-absent or not-said member of an active house stays possible (no individual activity gate)", () => {
+  const data = build([R("active", { last: ago(1) }), R("absent", { last: ago(200) }), R("never", { last: null }), R("unknown-mate")], { hh: ["active", "absent", "never", "unknown-mate"] });
+  assert.equal(data.houses.length, 1);
+  assert.deepEqual(data.houses[0].members.map((m) => m.handle).sort(), ["absent", "active", "never", "unknown-mate"], "every resident of the qualified house is a candidate");
+  const dealt = new Set();
+  for (let i = 0; i < 40; i++) dealt.add(deal(data, { now: NOW, rng: seq(0, (i + 0.5) / 40, 0) }).handle);
+  assert.deepEqual([...dealt].sort(), ["absent", "active", "never", "unknown-mate"], "each of the four can be dealt: the active one, the long-absent one, the one said to have no acts, and the one the office did not say about");
+  // a house that is NOT qualified stays out whoever its members are, so the household stage still decides
+  const out = build([R("quiet-a", { last: ago(100) }), R("quiet-b", { last: null })], { cold: ["quiet-a", "quiet-b"] });
+  assert.equal(eligiblePool(out, { now: NOW }).status, "none-recent");
+});
+
+test("the canonical household tri-state is kept: [null, undefined] is UNKNOWN (never none-recent), [null, null] is known-no-acts, [undefined, undefined] is unknown, any recent member makes the house recent", () => {
+  const fold = (rows, residents) => houseLastActive(houseDirectory(residents, REGISTRY(rows))[0].members);
+  const mixed = [R("n", { last: null }), R("u")];
+  assert.equal(fold({ mix: ["n", "u"] }, mixed), undefined, "the canonical fold itself says unknown for a partial read");
+  const d = build(mixed, { mix: ["n", "u"] });
+  assert.deepEqual(d.counts, { houses: 1, unknown: 1, known: 0 }, "counted unknown, not known");
+  assert.deepEqual(eligiblePool(d, { now: NOW }), { status: "unknown", pool: [] }, "the status is unknown, never none-recent");
+  assert.deepEqual(deal(d, { now: NOW }), { status: "unknown" });
+  assert.doesNotMatch(emptyWords("unknown"), /nobody we can see/i);
+  // beside a real recent house the partial house is still never guessed active and never claims 'nothing recent'
+  const beside = build([...mixed, R("live", { last: ago(1) })], { mix: ["n", "u"] });
+  assert.deepEqual(beside.counts, { houses: 2, unknown: 1, known: 1 });
+  assert.deepEqual(eligiblePool(beside, { now: NOW }).pool.map((h) => h.members.map((m) => m.handle)), [["live"]]);
+  // [null, null]: said, no acts: known, and honestly none-recent
+  const none = build([R("a", { last: null }), R("b", { last: null })], { nn: ["a", "b"] });
+  assert.equal(fold({ nn: ["a", "b"] }, [R("a", { last: null }), R("b", { last: null })]), null);
+  assert.deepEqual(none.counts, { houses: 1, unknown: 0, known: 1 });
+  assert.equal(eligiblePool(none, { now: NOW }).status, "none-recent");
+  // [undefined, undefined]: unknown
+  assert.equal(eligiblePool(build([R("x"), R("y")], { uu: ["x", "y"] }), { now: NOW }).status, "unknown");
+  // [null, undefined, recent]: the recent member qualifies the house, and the partial members are still dealable
+  const withRecent = build([R("n", { last: null }), R("u"), R("r", { last: ago(2) })], { three: ["n", "u", "r"] });
+  assert.equal(eligiblePool(withRecent, { now: NOW }).status, "ok");
+  assert.deepEqual(withRecent.houses[0].members.map((m) => m.handle).sort(), ["n", "r", "u"]);
 });
 
 test("a deal is a name, a house, a card line, a page link, the writing desk's link, an optional topic; it sends nothing", () => {
@@ -169,7 +202,7 @@ test("unsafe authored text or an unsafe handle is never made a link: a handle th
   assert.match(r.profileHref, /^\/residents\/[A-Za-z0-9._%-]+\/$/);
   assert.match(r.writeHref, /^\/mail\/compose\/\?to=[A-Za-z0-9._%-]+$/);
   // a house href is only ever the directory page shape
-  const odd = publicHouses([{ key: "k", name: "K", href: "javascript:alert(1)", members: [R("fine", { last: ago(1) })] }], { now: NOW, lastOf: lastActiveOf, noteOf: () => "", nameOf: (r) => r.handle });
+  const odd = publicHouses([{ key: "k", name: "K", href: "javascript:alert(1)", members: [R("fine", { last: ago(1) })] }], { now: NOW, houseLast: houseLastActive, noteOf: () => "", nameOf: (r) => r.handle });
   assert.equal(odd.houses[0].href, null);
 });
 
@@ -185,8 +218,8 @@ test("the page carries only public fields: no registry/resident object, no priva
   const data = build([R("rei", { last: ago(1), joined: "2026-06-01" })], { starforge: ["rei"] });
   const keys = (o) => Object.keys(o).sort().join(",");
   assert.equal(keys(data), "counts,houses");
-  assert.equal(keys(data.houses[0]), "founded,handles,href,key,members,name,sent");
-  assert.equal(keys(data.houses[0].members[0]), "at,handle,line,name");
+  assert.equal(keys(data.houses[0]), "at,founded,handles,href,key,members,name,sent");
+  assert.equal(keys(data.houses[0].members[0]), "handle,line,name");
   assert.doesNotMatch(JSON.stringify(data), /human|token|email|login|accounts/i);
 });
 
