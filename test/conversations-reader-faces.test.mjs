@@ -107,10 +107,14 @@ test("mountRoom hands `hostOwnsHeader` on ONLY when it is strictly true; every o
 });
 
 test("the page's mount door forwards the provider the same way, and the inline poller gives it on every mount (live and closed cards alike)", () => {
-  assert.match(page, /async mount\(host, roomId, \{ onState = null, faceForSpeaker = null, hostOwnsHeader = false \} = \{\}\)/);
+  // CORE-117 integration: the one mount door also carries the selected view's `circle` and the card's `onNavigate`; the CORE-128 options keep their defaults after them
+  assert.match(page, /async mount\(host, roomId, \{ onState = null, onNavigate = null, circle = null, faceForSpeaker = null, hostOwnsHeader = false \} = \{\}\)/);
   assert.match(page, /\.\.\.\(typeof faceForSpeaker === "function" \? \{ faceForSpeaker \} : \{\}\)/, "only when the page gave one");
   assert.match(page, /\.\.\.\(hostOwnsHeader === true \? \{ hostOwnsHeader: true \} : \{\}\)/, "the header option goes on only when strictly true");
-  assert.match(page, /rec\.ready = h\.mount\(host, String\(t\.id\), \{\s*faceForSpeaker: faceForSpeaker,\s*hostOwnsHeader: true,/, "ensureReader is the one mount, for every card, and the page says it owns the header");
+  assert.match(page, /rec\.ready = h\.mount\(host, String\(t\.id\), \{[\s\S]*?\},\s*faceForSpeaker: faceForSpeaker,\s*hostOwnsHeader: true,/, "ensureReader is the one mount, for every card, and the page says it owns the header (after the card's own onNavigate)");
+  // the ONE conversation (CORE-117) wears the SAME provider, so the lists' and the selected view's bylines have one renderer; it does not claim the room header (its own header is the place and the live chip)
+  assert.match(page, /h\.mount\(sel\.host, String\(sel\.room\), \{\s*circle: sel\.cid, faceForSpeaker: faceForSpeaker,\s*onState: function \(st\) \{ if \(selected === sel\) sel\.card\.classList\.toggle\("is-room-step", st === "room"\); \},\s*onNavigate: function \(n\) \{ followSelected\(sel, n\); \},\s*\}\)/, "the selected view hands on the page's one face provider, and follows the reader's own navigation and room step");
+  assert.doesNotMatch(page.slice(page.indexOf("function mountSelected"), page.indexOf("function loadSelected")), /hostOwnsHeader/, "and does not pass hostOwnsHeader");
   assert.match(MOUNT, /\.\.\.\(typeof faceForSpeaker === "function" \? \{ faceForSpeaker \} : \{\}\)/);
   assert.match(page, /refreshReaders\(liveBox, true\); refreshReaders\(closedBox, true\);\s*\}\s*\}\)/, "the pictures landing after a reader drew ask it to redraw");
 });
