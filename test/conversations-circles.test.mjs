@@ -195,7 +195,11 @@ function makeOffice(state) {
     let m;
     if ((m = /^\/world\/conversations\?circle=(\d+)(?:&after=(\d+))?$/.exec(path))) {
       if (state.circleRoom) return { status: 200, body: { now: 1, find: { circle: Number(m[1]), history: "complete", source: "record", room: roomHeader(state.circleRoom), circle_read: { circle: Number(m[1]), path: [Number(m[1])], says: 1, people: 1, lines: [], next: null, complete: true, budget: { bytes: 8192, used: 1 } }, sparks: null } } };
-      return { status: m[2] ? 200 : 200, body: circlePage(m[2] ? 2 : 1) };
+      const page = circlePage(m[2] ? 2 : 1);
+      // CORE-117: `echoCircle` makes the invented office answer a DIFFERENT circle id as itself (same invented lines), so a reader that navigates to another circle
+      // in the one view reads what it asked for, not a page that names circle 50101
+      if (state.echoCircle) { const id = Number(m[1]); page.find.circle = id; page.find.circle_read.circle = id; page.find.circle_read.path = [id]; }
+      return { status: m[2] ? 200 : 200, body: page };
     }
     if (path === "/world/conversations") return { status: 200, body: conversations(state.live, state.closed ?? []) };
     if (path === "/me") return { status: 200, body: { handles: ["claran"], household: "test-house", households: { claran: { slug: "test-house" } } } };
@@ -588,6 +592,95 @@ test(`ONE CONVERSATION (${readerNote}): a card's Open goes to that conversation'
     await p.evalJs(`location.hash = ""; true`);
     await p.until(`!!${CARD}`, "lists back");
     await p.until(`${CARD}.querySelector("[data-circle-reader]")?.dataset.state === "room"`, "the card reads as a room again");
+  } finally { await p.close(); }
+});
+
+test(`ONE CONVERSATION (${readerNote}): the reader's own Back to the room and Open FOLLOW in the one view: the address and the selected conversation move with what is on screen, a stale reply target is dropped, the draft, actor and form stay, the room step shows ONE metadata group, and a say carries only the target chosen THERE`, async () => {
+  if (!HAS_READER) return;
+  const { b, base } = await boot(true);
+  const state = { live: [thread()], room: (id) => roomFind(id), echoCircle: true };
+  const p = await openPage(b, base, { office: makeOffice(state), signedIn: true, hash: "#circle-50101" });
+  try {
+    await p.until(SELECTED_READY, "the conversation");
+    await p.until(SAY, "the speak box");
+    await p.evalJs(`(() => { window.__sayNode = document.querySelector("section[data-say]"); window.__formNode = document.querySelector("[data-say-form]"); window.__as = document.querySelector("[data-say-as]")?.value ?? null; document.querySelector("[data-say-text]").value = "a draft that must survive"; return true; })()`);
+    const actor = await p.evalJs(`window.__as`);
+    // Reply on a say of the FIRST conversation, on the reader's own button
+    await p.until(`!!${SELECTED}.querySelector('[data-thread="t-50101"] > [data-thread-dot]')`, "the opener's thread");
+    await p.evalJs(`${SELECTED}.querySelector('[data-thread="t-50101"] > [data-thread-dot]').click(); true`);
+    await p.until(`!!${SELECTED}.querySelector('[data-reply="50105"]')`, "Reply on 50105");
+    await p.evalJs(`${SELECTED}.querySelector('[data-reply="50105"]').click(); true`);
+    assert.equal(await p.evalJs(`document.querySelector("[data-say-reply]").hidden`), false, "a target is chosen in the first conversation");
+    // the reader's ACTUAL "Back to the room" (not a hash set by the test)
+    await p.evalJs(`${SELECTED}.querySelector("[data-back]").click(); true`);
+    await p.until(`${SELECTED}.querySelector("[data-circle-reader]")?.dataset.state === "room"`, "the room step");
+    assert.equal(await p.evalJs(`document.querySelector("[data-say-reply]").hidden`), true, "the stale reply target is dropped when the reader moves away");
+    assert.equal(await p.evalJs(`location.hash`), "#circle-50101", "the room step keeps the selected conversation's address");
+    // ONE effective metadata group on the room step: the reader's own room header, and the page's partial place + live line stands down beside it
+    assert.equal(await p.evalJs(`${SELECTED}.classList.contains("is-room-step")`), true);
+    assert.equal(await p.evalJs(`${SELECTED}.querySelectorAll(".cr-head").length`), 1, "the reader's room header");
+    // (this harness page carries no stylesheet, so the rule is shown by matching the page's own selector against the live DOM, and pinned in the page's CSS below; the built pictures show it drawn)
+    assert.equal(await p.evalJs(`document.querySelectorAll('.c-selected.is-room-step [data-selected-place], .c-selected.is-room-step > .c-chip').length`), 2, "the page's partial place and live chip are exactly what the room step's rule stands down");
+    assert.match(PAGE_SRC, /\.convo \.c-selected\.is-room-step \[data-selected-place\], \.convo \.c-selected\.is-room-step > \.c-chip \{ display: none; \}/, "the stylesheet stands them down beside the reader's own room header");
+    // the reader's ACTUAL "Open" on the other conversation
+    await p.until(`!!${SELECTED}.querySelector('[data-circle-open="50107"]')`, "Open on the other conversation");
+    await p.evalJs(`${SELECTED}.querySelector('[data-circle-open="50107"]').click(); true`);
+    await p.until(`location.hash === "#circle-50107" && ${SELECTED}?.dataset.selectedCard === "50107"`, "the address and the selected conversation follow");
+    await p.until(`${SELECTED}.querySelector("[data-circle-reader]")?.dataset.state === "circle"`, "the circle is on screen");
+    assert.equal(await p.evalJs(`${SELECTED}.classList.contains("is-room-step")`), false, "the room step is left");
+    assert.equal(await p.evalJs(`(() => { const e = ${SELECTED}.querySelector("[data-selected-place]"); return !!e && getComputedStyle(e).display !== "none" && e.textContent === "Cave Interior"; })()`), true, "the page's place line is back, from the office's own answer for THIS circle");
+    assert.equal(await p.evalJs(`document.querySelectorAll("[data-selected-card]").length`), 1, "one selected card");
+    assert.equal(await p.evalJs(`document.querySelector("[data-say-reply]").hidden`), true, "still no stale target");
+    // the page's one form, its draft and its actor are the same ones
+    assert.equal(await p.evalJs(`document.querySelector("section[data-say]") === window.__sayNode && document.querySelector("[data-say-form]") === window.__formNode`), true, "the same speaking-area nodes");
+    assert.equal(await p.evalJs(`document.querySelector("[data-say-text]").value`), "a draft that must survive", "the draft stayed");
+    assert.equal(await p.evalJs(`document.querySelector("[data-say-as]")?.value ?? null`), actor, "the actor stayed");
+    // a say now (fixture office, no real act) rides NO target: the first conversation's was dropped
+    await p.evalJs(`document.querySelector("[data-say-form]").requestSubmit(); true`);
+    await p.until(`document.querySelector("[data-say-text]").value === ""`, "the first say landed");
+    assert.equal(state.said.length, 1);
+    assert.equal("reply_to" in state.said[0], false, "no stale reply_to rode the say");
+    assert.equal(state.said[0].text, "a draft that must survive");
+    // and a Reply chosen in THIS conversation rides exactly its id
+    await p.until(`!!${SELECTED}.querySelector('[data-thread="t-50101"] > [data-thread-dot]')`, "the opener's thread in the other conversation");
+    // open it only if it is folded (the reader keeps a thread's fold by its key, and the visitor's own say refreshed the view)
+    await p.evalJs(`(() => { const t = ${SELECTED}.querySelector('[data-thread="t-50101"]'); if (t && t.getAttribute("data-open") === "false") t.querySelector(":scope > [data-thread-dot]").click(); return true; })()`);
+    await p.until(`!!${SELECTED}.querySelector('[data-reply="50105"]')`, "Reply on 50105 here");
+    await p.evalJs(`${SELECTED}.querySelector('[data-reply="50105"]').click(); true`);
+    await sendSay(p, "a reply chosen here");
+    await p.until(`document.querySelector("[data-say-text]").value === ""`, "the second say landed");
+    assert.equal(state.said[1].reply_to, 50105, "the target chosen in the conversation on screen is the one that rides");
+  } finally { await p.close(); }
+});
+
+test(`ONE CONVERSATION (${readerNote}): the visible "← All conversations" leaves IN PLACE on an ordinary press (no reload; the form, draft and actor stay) and keeps ordinary link semantics for a modified press and the browser's Back`, async () => {
+  if (!HAS_READER) return;
+  const { b, base } = await boot(true);
+  const state = { live: [thread()], room: (id) => roomFind(id) };
+  const p = await openPage(b, base, { office: makeOffice(state), signedIn: true, hash: "#circle-50101" });
+  try {
+    await p.until(SELECTED_READY, "the conversation");
+    await p.until(SAY, "the speak box");
+    await p.evalJs(`(() => { window.__noReload = 7; window.__sayNode = document.querySelector("section[data-say]"); window.__as = document.querySelector("[data-say-as]")?.value ?? null; document.querySelector("[data-say-text]").value = "keep me"; return true; })()`);
+    const actor = await p.evalJs(`window.__as`);
+    assert.equal(await p.evalJs(`${SELECTED}.querySelector(".c-selected-back").getAttribute("href")`), "/conversations/", "an ordinary link, href intact");
+    // a MODIFIED press is the link's own business: the page does not cancel it (the test cancels it afterwards so this page stays put)
+    await p.evalJs(`(() => { const a = ${SELECTED}.querySelector(".c-selected-back"); window.__mod = null; a.addEventListener("click", (e) => { window.__mod = { prevented: e.defaultPrevented }; e.preventDefault(); }, { once: true }); a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true, button: 0 })); return true; })()`);
+    assert.deepEqual(await p.evalJs(`window.__mod`), { prevented: false }, "a ctrl-press is left to the browser's own new-tab handling");
+    assert.equal(await p.evalJs(`!!document.querySelector("[data-selected-card]")`), true, "and it did not leave the view");
+    // an ORDINARY primary press: in place
+    await p.evalJs(`${SELECTED}.querySelector(".c-selected-back").click(); true`);
+    await p.until(`!document.querySelector("[data-selected-card]")`, "the view left");
+    assert.equal(await p.evalJs(`window.__noReload`), 7, "the page was not reloaded");
+    assert.equal(await p.evalJs(`location.pathname + location.hash`), "/conversations/", "the address is the plain list");
+    assert.equal(await p.evalJs(`document.querySelector("section[data-say]") === window.__sayNode && document.querySelector("section[data-say]").parentElement.matches("main")`), true, "the same speaking area, home");
+    assert.equal(await p.evalJs(`document.querySelector("[data-say-text]").value`), "keep me", "the draft stayed");
+    assert.equal(await p.evalJs(`document.querySelector("[data-say-as]")?.value ?? null`), actor, "the actor stayed");
+    await p.until(`!!${CARD}`, "the lists are back");
+    // the browser's own Back returns to the conversation, draft still intact
+    await p.evalJs(`history.back(); true`);
+    await p.until(SELECTED_READY, "Back returns to the one conversation");
+    assert.equal(await p.evalJs(`document.querySelector("[data-say-text]").value`), "keep me", "the draft survived the whole round trip");
   } finally { await p.close(); }
 });
 

@@ -879,8 +879,15 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
         sel.mounting = true;
         // CORE-117 on CORE-128's host contract: the one conversation wears the SAME face provider every card's reader does (faceForSpeaker above: the guarded public
         // picture, the letter fallback, the dashed chip for a house's human), so there is one face renderer and the bylines of the one view match the lists'.
-        // The header-ownership option is NOT passed here: this view's own header is only the place and the live chip, so the reader keeps its room header for the room one step back.
-        h.mount(sel.host, String(sel.room), { circle: sel.cid, faceForSpeaker: faceForSpeaker }).then(function (m) {
+        // The header-ownership option is NOT passed here: the reader keeps its own room header for the room one step back, and on that step the page's own partial
+        // place/live line stands down (onState below), so there is ONE effective metadata group on screen, never both.
+        // The reader navigates INSIDE this view (its "Back to the room", a room opener's "Open", a stub's link): onNavigate follows it, so the address, the selected
+        // conversation and the reply target never diverge from what is on screen (followSelected).
+        h.mount(sel.host, String(sel.room), {
+          circle: sel.cid, faceForSpeaker: faceForSpeaker,
+          onState: function (st) { if (selected === sel) sel.card.classList.toggle("is-room-step", st === "room"); },
+          onNavigate: function (n) { followSelected(sel, n); },
+        }).then(function (m) {
           sel.mounting = false;
           if (selected !== sel) { if (m && m.reader) { try { m.reader.destroy(); } catch (e) { /* gone */ } } return; }
           if (!m || !m.ok) { selNote(sel, "The circle reader isn't available on this page, so this conversation can't be shown here.", false); return; }
@@ -902,22 +909,59 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
               selNote(sel, "The office couldn't open this conversation" + (res.d && res.d.defect ? " (" + res.d.defect + ")" : " just now") + ". That is not the same as it being empty.", true);
               return;
             }
-            sel.room = room.id;
-            var title = sel.card.querySelector("[data-selected-place]");
-            if (!title) { title = el("h2", "c-place"); title.setAttribute("data-selected-place", ""); sel.card.insertBefore(title, sel.host); }
-            title.textContent = room.place || "somewhere in the world";
-            if (room.live && !sel.card.querySelector(".c-chip")) title.after(el("span", "c-chip live", "live"));
+            paintSelectedPlace(sel, room);
             mountSelected(sel);
           })
           .catch(function () {
             selNote(sel, "This conversation couldn't be read just now, so it can't be shown. That is not the same as it being empty.", true);
           });
       }
+      // the page's own line above the reader: the place the OFFICE says this circle is in, and the live chip (never worked out here)
+      function paintSelectedPlace(sel, room) {
+        sel.room = room.id;
+        var title = sel.card.querySelector("[data-selected-place]");
+        if (!title) { title = el("h2", "c-place"); title.setAttribute("data-selected-place", ""); sel.card.insertBefore(title, sel.host); }
+        title.textContent = room.place || "somewhere in the world";
+        var chip = sel.card.querySelector(".c-chip");
+        if (room.live && !chip) title.after(el("span", "c-chip live", "live"));
+        else if (!room.live && chip) chip.remove();
+      }
+      // THE READER MOVED INSIDE THE VIEW (its Back to the room, a room opener's Open, a stub's link). The page follows what is on screen: whatever moved, a reply
+      // target chosen before it is dropped (a target belongs to the conversation it was chosen in); a different circle becomes the selected one (the card, the
+      // address: pushState, so the browser's Back returns to the one before, with no remount), and the office is asked again who it says that circle is in, so the
+      // place line is never the first conversation's. The room step keeps the address: the selected conversation is still the one the visitor chose.
+      function followSelected(sel, n) {
+        if (selected !== sel || !n) return;
+        document.dispatchEvent(new CustomEvent("pm:selected-change"));
+        if (n.view !== "circle" || n.circleId === undefined || n.circleId === null) return;
+        var id = String(n.circleId);
+        if (!/^\d{1,18}$/.test(id) || id === sel.cid) return;
+        sel.cid = id;
+        sel.card.setAttribute("data-selected-card", id);
+        try { history.pushState(null, "", "#circle-" + encodeURIComponent(id)); } catch (e) { /* the address stays; the view on screen is right */ }
+        var asked = id;
+        fetch(API + "?circle=" + encodeURIComponent(id), { headers: { accept: "application/json" } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) {
+            if (selected !== sel || sel.cid !== asked) return;
+            var room = d && d.find && d.find.room ? d.find.room : null;
+            if (room && room.id !== undefined && room.id !== null) paintSelectedPlace(sel, room);   // else the line stays as the office last said it: no guess
+          })
+          .catch(function () { /* quiet: the reader is showing the circle; the place line keeps what the office last said */ });
+      }
       function enterSelected(cid) {
         var card = el("article", "c-thread c-selected");
         card.setAttribute("data-selected-card", cid);
         var back = el("a", "c-selected-back", "← All conversations");
         back.href = "/conversations/";
+        // an ordinary primary press leaves IN PLACE (the page, its one speaking area, an unsent draft and the chosen actor all stay); the link keeps its ordinary
+        // href, so a modified press (new tab, new window, download, middle button) and a browser with no script behave as any link does
+        back.addEventListener("click", function (ev) {
+          if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+          ev.preventDefault();
+          try { history.pushState(null, "", "/conversations/"); } catch (e) { location.href = "/conversations/"; return; }
+          syncSelected(); anchored = false; tick();
+        });
         card.appendChild(back);
         var host = el("div", "c-circles");
         host.setAttribute("data-circles-host", "");
@@ -1526,6 +1570,8 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
     }
     .convo .c-selected-note { margin: 0.5em 0; }
     .convo .c-selected [data-selected-place] { display: inline-block; margin-right: 0.6rem; }
+    /* the room one step back (the reader's own Back to the room) draws the room's whole header itself: the page's partial place + live line stands down there, so one metadata group is on screen */
+    .convo .c-selected.is-room-step [data-selected-place], .convo .c-selected.is-room-step > .c-chip { display: none; }
     .convo .c-selected > .c-say { margin: 1.2rem 0 0; }
     .convo .c-say-reply {
       display: flex; align-items: center; gap: 0.7em; flex-wrap: wrap; margin: 0 0 0.5em;
