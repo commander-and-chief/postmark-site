@@ -671,7 +671,8 @@ test(`CORE-128 (${readerNote}): the host owns the room's header (none repeated i
     assert.equal(await p.evalJs(`${CARD}.querySelectorAll(".c-thread-head").length`), 1, "the host's one room header, unchanged by opening a circle");
     assert.equal(await p.evalJs(`${picked}.length > 1 && ${picked}.every((l) => l.firstElementChild?.classList.contains("c-face"))`), true, "every statement of the opened circle, replies included, has its face first in the byline");
     assert.equal(await p.evalJs(`new Set(${picked}.map((l) => l.firstElementChild)).size === ${picked}.length`), true, "a fresh node per line: no repeated speaker took an earlier line's face");
-    assert.equal(await p.evalJs(`${SELECTED}.querySelectorAll(".c-who, .cr-head-line a, .cr-head-line button").length > 0`), true, "the names and controls stay");
+    // the names stay: each byline keeps its speaker's name after the face (in the one view the names are the reader's own `.cr-who`; the host's `.c-who` links belong to the lists' speakers line)
+    assert.equal(await p.evalJs(`${picked}.every((l) => (l.querySelector(".cr-who")?.textContent ?? "").trim().length > 0)`), true, "the names stay");
   } finally { RESIDENTS_META = null; await p.close(); }
 });
 
