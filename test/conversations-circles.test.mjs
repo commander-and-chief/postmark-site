@@ -657,19 +657,21 @@ test(`CORE-128 (${readerNote}): the host owns the room's header (none repeated i
     // the room's circle list: each opener's byline wears a face, inline, first (a fresh node per line)
     const bylines = `[...${CARD}.querySelectorAll("[data-circle-reader] .cr-head-line")]`;
     assert.equal(await p.evalJs(`${bylines}.length > 0 && ${bylines}.every((l) => l.firstElementChild?.classList.contains("c-face"))`), true, "every listed opener has its face first in the byline");
-    // an opened circle: every statement, replies included
+    // an opened circle: every statement, replies included. CORE-117: a statement's "Open" goes to that conversation's OWN view (the #circle- link: the one-conversation view),
+    // so the opened circle is read THERE, in the page's one selected card, wearing the same provider the lists do
+    const picked = `[...${SELECTED}.querySelectorAll("[data-circle-reader] .cr-head-line")]`;
     await p.evalJs(`document.querySelector('[data-circle-open="50101"]').click(); true`);
-    await p.until(`!!${CARD}.querySelector("[data-circle-reader][data-state=circle]")`, "the circle opened");
+    await p.until(SELECTED_READY, "the circle opened (in the one-conversation view)");
     // the visitor opens every folded thread (the replies), as the FALSIFIER test does, until none is folded
     for (let i = 0; i < 20; i++) {
-      const folded = await p.evalJs(`(() => { const t = [...${CARD}.querySelectorAll('[data-thread][data-open="false"] > [data-thread-dot]')]; t.forEach((d) => d.click()); return t.length; })()`);
+      const folded = await p.evalJs(`(() => { const t = [...${SELECTED}.querySelectorAll('[data-thread][data-open="false"] > [data-thread-dot]')]; t.forEach((d) => d.click()); return t.length; })()`);
       if (!folded) break;
     }
-    // (an opened circle keeps ITS OWN header, the circle's: hostOwnsHeader leaves out only the room's; the host's group is still the one room header)
+    // the lists' card keeps its ONE room header (the host's group), unchanged by opening a circle elsewhere; the one view's own header is the place and the live chip
     assert.equal(await p.evalJs(`${CARD}.querySelectorAll(".c-thread-head").length`), 1, "the host's one room header, unchanged by opening a circle");
-    assert.equal(await p.evalJs(`${bylines}.length > 1 && ${bylines}.every((l) => l.firstElementChild?.classList.contains("c-face"))`), true, "every statement of the opened circle, replies included, has its face first in the byline");
-    assert.equal(await p.evalJs(`new Set(${bylines}.map((l) => l.firstElementChild)).size === ${bylines}.length`), true, "a fresh node per line: no repeated speaker took an earlier line's face");
-    assert.equal(await p.evalJs(`${CARD}.querySelectorAll(".c-who, .cr-head-line a, .cr-head-line button").length > 0`), true, "the names and controls stay");
+    assert.equal(await p.evalJs(`${picked}.length > 1 && ${picked}.every((l) => l.firstElementChild?.classList.contains("c-face"))`), true, "every statement of the opened circle, replies included, has its face first in the byline");
+    assert.equal(await p.evalJs(`new Set(${picked}.map((l) => l.firstElementChild)).size === ${picked}.length`), true, "a fresh node per line: no repeated speaker took an earlier line's face");
+    assert.equal(await p.evalJs(`${SELECTED}.querySelectorAll(".c-who, .cr-head-line a, .cr-head-line button").length > 0`), true, "the names and controls stay");
   } finally { RESIDENTS_META = null; await p.close(); }
 });
 
