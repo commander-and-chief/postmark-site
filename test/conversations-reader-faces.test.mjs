@@ -94,10 +94,23 @@ test("mountRoom hands the provider on when given, and builds the reader with EXA
   }
 });
 
+test("mountRoom hands `hostOwnsHeader` on ONLY when it is strictly true; every other caller (the event page, the gallery) builds the reader with its old options", async () => {
+  const owned = fakeModule();
+  await mountRoom({ doc, host: {}, roomId: "r1", importImpl: async () => owned.mod, hostOwnsHeader: true });
+  assert.equal(owned.seen[0].hostOwnsHeader, true);
+  for (const notTrue of [undefined, false, null, "true", 1, {}]) {
+    const bare = fakeModule();
+    await mountRoom({ doc, host: {}, roomId: "r1", importImpl: async () => bare.mod, ...(notTrue === undefined ? {} : { hostOwnsHeader: notTrue }) });
+    assert.equal("hostOwnsHeader" in bare.seen[0], false, `no hostOwnsHeader key for ${JSON.stringify(notTrue)}`);
+    assert.deepEqual(Object.keys(bare.seen[0]).sort(), ["canReply", "doc", "host", "hrefForCircle", "onNavigate", "onReply", "roomId", "source"]);
+  }
+});
+
 test("the page's mount door forwards the provider the same way, and the inline poller gives it on every mount (live and closed cards alike)", () => {
-  assert.match(page, /async mount\(host, roomId, \{ onState = null, faceForSpeaker = null \} = \{\}\)/);
+  assert.match(page, /async mount\(host, roomId, \{ onState = null, faceForSpeaker = null, hostOwnsHeader = false \} = \{\}\)/);
   assert.match(page, /\.\.\.\(typeof faceForSpeaker === "function" \? \{ faceForSpeaker \} : \{\}\)/, "only when the page gave one");
-  assert.match(page, /rec\.ready = h\.mount\(host, String\(t\.id\), \{\s*faceForSpeaker: faceForSpeaker,/, "ensureReader is the one mount, for every card");
+  assert.match(page, /\.\.\.\(hostOwnsHeader === true \? \{ hostOwnsHeader: true \} : \{\}\)/, "the header option goes on only when strictly true");
+  assert.match(page, /rec\.ready = h\.mount\(host, String\(t\.id\), \{\s*faceForSpeaker: faceForSpeaker,\s*hostOwnsHeader: true,/, "ensureReader is the one mount, for every card, and the page says it owns the header");
   assert.match(MOUNT, /\.\.\.\(typeof faceForSpeaker === "function" \? \{ faceForSpeaker \} : \{\}\)/);
   assert.match(page, /refreshReaders\(liveBox, true\); refreshReaders\(closedBox, true\);\s*\}\s*\}\)/, "the pictures landing after a reader drew ask it to redraw");
 });

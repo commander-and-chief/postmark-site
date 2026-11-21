@@ -728,6 +728,7 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
         card.__cr = rec;
         rec.ready = h.mount(host, String(t.id), {
           faceForSpeaker: faceForSpeaker,
+          hostOwnsHeader: true,
           onState: function (st) {
             if (st === "room" || st === "circle") showFlat(card, false, "");
             else if (st === "unavailable") showFlat(card, true, "The circles couldn't be read just now, so these are the words this page already holds:");
@@ -946,7 +947,7 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
     // and a Reply press is announced as a `pm:reply-target` event for the speak box below. Nothing here derives a link, a parent or a circle.
     const __getTok = () => { try { return JSON.parse(localStorage.getItem(KEYS.token) || "null"); } catch { return null; } };
     window.__pmCircleReaders = {
-      async mount(host, roomId, { onState = null, faceForSpeaker = null } = {}) {
+      async mount(host, roomId, { onState = null, faceForSpeaker = null, hostOwnsHeader = false } = {}) {
         const mod = await loadReader({});
         if (!mod) return { ok: false, why: "the circle reader is not on this site's pinned World yet" };
         if (typeof mod.READER_CSS === "string" && mod.READER_CSS && !document.querySelector("style[data-circle-reader-css]")) {
@@ -963,6 +964,8 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
           hrefForCircle: (c) => `#circle-${encodeURIComponent(c)}`,
           // CORE-128: the optional face provider, handed on ONLY when the page gave one (a reader without the option, or a caller without a provider, is unchanged)
           ...(typeof faceForSpeaker === "function" ? { faceForSpeaker } : {}),
+          // CORE-128 / WLD-215: this page draws each card's one header itself (title, live, counts, began, latest), so the reader leaves its own out (strictly `true`; absent = the reader's default)
+          ...(hostOwnsHeader === true ? { hostOwnsHeader: true } : {}),
         });
         await reader.showRoom(roomId);
         return { ok: true, reader };

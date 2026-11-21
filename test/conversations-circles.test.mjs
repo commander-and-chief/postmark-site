@@ -563,6 +563,37 @@ test("CORE-128: a card's metadata is ONE group above the talk (counts, began, la
   } finally { RESIDENTS_META = null; RESIDENTS_META_DELAY_MS = 0; await p.close(); }
 });
 
+test(`CORE-128 (${readerNote}): the host owns the room's header (none repeated inside the reader, no 'now' row) and every byline the reader draws, a room's circle list and an opened circle alike, carries its face inline`, async () => {
+  const { b, base } = await boot(true);
+  RESIDENTS_META = { residents: { pica: { name: "Pica", avatar: "/media/pica-avatar-card.jpg", color: "#2f5aa8" }, noe: { name: "Noe", avatar: null, color: "#c0703c" } } };
+  const p = await openPage(b, base, { office: makeOffice({ live: [thread()], room: (id) => roomFind(id) }) });
+  try {
+    if (!HAS_READER) return;                      // a pinned World that predates the reader: the FLOOR tests above are what runs
+    await p.until(MOUNTED, "the reader mounted");
+    // the room's one header is the host's: the reader draws none of its own (WLD-215 hostOwnsHeader), so the metadata is said once, above the talk
+    assert.equal(await p.evalJs(`${CARD}.querySelectorAll(".cr-head").length`), 0, "no second header inside the reader");
+    assert.equal(await p.evalJs(`${CARD}.querySelectorAll(".c-thread-head").length`), 1, "the host's one title/live group");
+    assert.equal(await p.evalJs(`${CARD}.querySelectorAll(".c-meta").length`), 1, "the host's one counts/began/latest group");
+    assert.equal(await p.evalJs(`/\\bnow\\b/i.test(${CARD}.querySelector(".c-thread-head").textContent + " " + ${CARD}.querySelector(".c-meta").textContent)`), false, "no 'now' row");
+    // the room's circle list: each opener's byline wears a face, inline, first (a fresh node per line)
+    const bylines = `[...${CARD}.querySelectorAll("[data-circle-reader] .cr-head-line")]`;
+    assert.equal(await p.evalJs(`${bylines}.length > 0 && ${bylines}.every((l) => l.firstElementChild?.classList.contains("c-face"))`), true, "every listed opener has its face first in the byline");
+    // an opened circle: every statement, replies included
+    await p.evalJs(`document.querySelector('[data-circle-open="50101"]').click(); true`);
+    await p.until(`!!${CARD}.querySelector("[data-circle-reader][data-state=circle]")`, "the circle opened");
+    // the visitor opens every folded thread (the replies), as the FALSIFIER test does, until none is folded
+    for (let i = 0; i < 20; i++) {
+      const folded = await p.evalJs(`(() => { const t = [...${CARD}.querySelectorAll('[data-thread][data-open="false"] > [data-thread-dot]')]; t.forEach((d) => d.click()); return t.length; })()`);
+      if (!folded) break;
+    }
+    // (an opened circle keeps ITS OWN header, the circle's: hostOwnsHeader leaves out only the room's; the host's group is still the one room header)
+    assert.equal(await p.evalJs(`${CARD}.querySelectorAll(".c-thread-head").length`), 1, "the host's one room header, unchanged by opening a circle");
+    assert.equal(await p.evalJs(`${bylines}.length > 1 && ${bylines}.every((l) => l.firstElementChild?.classList.contains("c-face"))`), true, "every statement of the opened circle, replies included, has its face first in the byline");
+    assert.equal(await p.evalJs(`new Set(${bylines}.map((l) => l.firstElementChild)).size === ${bylines}.length`), true, "a fresh node per line: no repeated speaker took an earlier line's face");
+    assert.equal(await p.evalJs(`${CARD}.querySelectorAll(".c-who, .cr-head-line a, .cr-head-line button").length > 0`), true, "the names and controls stay");
+  } finally { RESIDENTS_META = null; await p.close(); }
+});
+
 test("the header no longer says a conversation closes after five quiet minutes, and the page's own wording keeps 'letter threads' and 'circles' apart", () => {
   assert.doesNotMatch(PAGE_SRC, /closes itself after five\s+quiet minutes|living five minutes/i, "the stale claim is gone (the office's record says a conversation lasts the settlement)");
   assert.match(PAGE_SRC, /lasts until the\s+settlement/);
