@@ -20,7 +20,7 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -78,19 +78,30 @@ function findChrome() {
   return null;
 }
 
-async function launch(chrome) {
+// `startMs` is the real 20 s startup limit; the argument exists only so the test of the failure path below need not wait it out.
+async function launch(chrome, { startMs = 20_000 } = {}) {
   const profile = mkdtempSync(join(tmpdir(), "core82-convo-profile-"));
   const child = spawn(chrome, ["--headless=new", "--no-sandbox", "--disable-gpu", "--disable-sync", "--disable-extensions", "--hide-scrollbars",
     "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"], detached: true });
   child.unref();
-  const wsUrl = await new Promise((ok, no) => {
-    let buf = "";
-    const t = setTimeout(() => no(new Error("no DevTools url within 20 s")), 20_000);
-    child.stderr.on("data", (d) => { buf += d; const m = /DevTools listening on (ws:\/\/\S+)/.exec(buf); if (m) { clearTimeout(t); ok(m[1]); } });
-    child.on("exit", (c) => no(new Error(`the browser exited early (${c})`)));
-  });
-  const ws = new WebSocket(wsUrl);
-  await new Promise((ok, no) => { ws.onopen = ok; ws.onerror = no; });
+  // CORE-144: the child is detached and its stderr is piped, so a start that fails (the 20 s timeout, an early exit, a refused socket) must reap
+  // both, or the dead launch keeps the process alive and the job hangs instead of failing with its real error.
+  const reap = () => {
+    if (child.exitCode === null && child.signalCode === null) { try { process.kill(-child.pid, "SIGKILL"); } catch { try { child.kill("SIGKILL"); } catch { /* gone */ } } }
+    try { child.stderr.destroy(); } catch { /* gone */ }
+    rmSync(profile, { recursive: true, force: true });
+  };
+  let ws;
+  try {
+    const wsUrl = await new Promise((ok, no) => {
+      let buf = "";
+      const t = setTimeout(() => no(new Error(`no DevTools url within ${startMs / 1000} s`)), startMs);
+      child.stderr.on("data", (d) => { buf += d; const m = /DevTools listening on (ws:\/\/\S+)/.exec(buf); if (m) { clearTimeout(t); ok(m[1]); } });
+      child.on("exit", (c) => { clearTimeout(t); no(new Error(`the browser exited early (${c})`)); });
+    });
+    ws = new WebSocket(wsUrl);
+    await new Promise((ok, no) => { ws.onopen = ok; ws.onerror = no; });
+  } catch (e) { try { ws?.close(); } catch { /* gone */ } reap(); throw e; }
   let id = 0;
   const pending = new Map(), listeners = [];
   ws.onmessage = (ev) => {
@@ -507,4 +518,29 @@ test("the header no longer says a conversation closes after five quiet minutes, 
   assert.doesNotMatch(PAGE_SRC, /closes itself after five\s+quiet minutes|living five minutes/i, "the stale claim is gone (the office's record says a conversation lasts the settlement)");
   assert.match(PAGE_SRC, /lasts until the\s+settlement/);
   assert.doesNotMatch(MAIN, /letter threads?/i, "this page is spoken talk: circles, never letter threads");
+});
+
+// CORE-144 (Wright 2026-11-20 23:59Z): a Chrome that never reports its DevTools URL must FAIL the launch with that real error, promptly, and leave nothing
+// behind. The launcher's child is detached with a piped stderr; before the fix the timeout rejected and left both alive, so the file never exited (CI held
+// open until cancelled). The "browser" here is a shell script that records its pid and sleeps, so no Chrome is needed and the real 20 s limit is not waited out.
+test("CORE-144: a Chrome that never reports a DevTools URL fails the launch with its real error and leaves no child or pipe behind", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "core144-fake-chrome-"));
+  const pidFile = join(dir, "pid"), fake = join(dir, "fake-chrome");
+  writeFileSync(fake, `#!/bin/sh\necho $$ > "${pidFile}"\nexec sleep 300\n`, { mode: 0o755 });
+  const pipes = () => process.getActiveResourcesInfo().filter((r) => r === "PipeWrap").length;
+  const before = pipes();
+  let pid = null;
+  try {
+    await assert.rejects(launch(fake, { startMs: 1500 }), /^Error: no DevTools url within 1\.5 s$/, "the original timeout error, unchanged");
+    pid = Number(readFileSync(pidFile, "utf8"));
+    assert.ok(pid > 1, "the fake browser started");
+    const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    for (let i = 0; i < 75 && (alive() || pipes() > before); i++) await new Promise((r) => setTimeout(r, 40));
+    assert.equal(alive(), false, "the spawned child is reaped on the failed start");
+    assert.ok(pipes() <= before, "its piped stderr is closed");
+    pid = null;
+  } finally {
+    if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* gone */ } }   // only reached with a live child: the assertion above failed
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
