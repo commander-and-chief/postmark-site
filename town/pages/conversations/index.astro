@@ -1105,15 +1105,21 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
       // first paint is names-only, and if this fetch never lands the page stays
       // names-only rather than empty. When it does land, repaint so the faces
       // appear under the names already on screen.
+      // POLL-FACES:BEGIN
+      // The faces landing is an AUTOMATIC ask, not a visitor's act (CORE-158): it repaints the cards with their pictures by asking the list again, but never while the
+      // page is waiting out a failed read: the owed retry stands, and the pictures arrive with it. The readers are still asked to redraw at once.
+      function facesReady(d) {
+        if (d && d.residents) {
+          faces = d.residents;
+          if (!poller.state().fails) tick();
+          // the readers drew (or are drawing) their bylines before the pictures landed: ask them to redraw so the faces appear under the names
+          refreshReaders(liveBox, true); refreshReaders(closedBox, true);
+        }
+      }
+      // POLL-FACES:END
       fetch("/world-engine/residents-meta.json", { headers: { accept: "application/json" } })
         .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (d) {
-          if (d && d.residents) {
-            faces = d.residents; tick();
-            // the readers drew (or are drawing) their bylines before the pictures landed: ask them to redraw so the faces appear under the names
-            refreshReaders(liveBox, true); refreshReaders(closedBox, true);
-          }
-        })
+        .then(facesReady)
         .catch(function () { /* names only — a face is a garnish, never the meal */ });
 
       tick();

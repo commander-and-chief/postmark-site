@@ -130,7 +130,7 @@ test("a rejected ask (an abort, a timeout) backs off like any failure", async ()
   assert.equal(r.poller.state().wait, 15000);
 });
 
-test("a tick by another way in (a say, a hash change, the faces landing) during a back-off asks at once if nothing is in flight, and its outcome counts", async () => {
+test("a visitor-driven tick (a say, a hash change, the back link) during a back-off asks at once if nothing is in flight, and its outcome counts", async () => {
   const r = rig();
   r.poller.tick(); r.asks[0].settle(false); await r.flush();   // backed off: 15 s armed
   assert.equal(r.poller.tick(), true, "the visitor's own act is not made to wait");
@@ -139,6 +139,44 @@ test("a tick by another way in (a say, a hash change, the faces landing) during 
   r.asks[1].settle(false); await r.flush();
   assert.equal(r.poller.state().wait, 30000, "and its failure is the second");
   r.advance(29_999); assert.equal(r.asks.length, 2); r.advance(1); assert.equal(r.asks.length, 3);
+});
+
+test("THE FACES LANDING is an AUTOMATIC ask: after a failed read the page's own faces-ready callback makes no ask before the owed retry, leaves that retry armed and due, and the next ask comes at its due time", async () => {
+  const facesSrc = between("// POLL-FACES:BEGIN", "// POLL-FACES:END");
+  const calls = [];
+  const wire = (r) => new Function("poller", "tick", "refreshReaders", "liveBox", "closedBox", `var faces = null;\n${facesSrc}\nreturn { facesReady: facesReady, faces: function () { return faces; } };`)(
+    r.poller, () => r.poller.tick(), (box, redraw) => calls.push([box, redraw]), "live", "closed");
+  const meta = { residents: { pica: { name: "Pica" } } };
+
+  // the list's read failed; the faces arrive 5 s later (the real callback, not a bare tick)
+  const r = rig(); const page = wire(r);
+  r.poller.tick(); r.asks[0].settle(false); await r.flush();          // backed off: the retry is owed at 15000
+  r.advance(5000);
+  page.facesReady(meta);
+  assert.equal(r.asks.length, 1, "the faces landing made no main-list ask before the owed retry");
+  assert.equal(r.poller.state().armed, true, "the armed retry is intact");
+  assert.equal(r.poller.state().fails, 1, "and the ladder did not move");
+  assert.deepEqual(page.faces(), meta.residents, "the faces are still taken");
+  assert.deepEqual(calls, [["live", true], ["closed", true]], "and the open readers are still asked to redraw with them");
+  r.advance(9999); assert.equal(r.asks.length, 1, "nothing at 14999");
+  r.advance(1); assert.equal(r.asks.length, 2, "the next automatic ask comes at its due time, 15000 after the failure");
+
+  // normal pace: the faces landing repaints with an ask, as it always did; an ask already out is not doubled
+  const n = rig(); const pn = wire(n);
+  pn.facesReady(meta);
+  assert.equal(n.asks.length, 1, "no failure owed: the faces landing asks (the repaint)");
+  pn.facesReady(meta);
+  assert.equal(n.asks.length, 1, "and not twice while that ask is out");
+  n.asks[0].settle(true); await n.flush(); n.advance(PACE);
+  assert.equal(n.asks.length, 2, "the 7000 ms pace is unchanged");
+  // a success after a backed-off stretch is back to normal, so the faces landing asks again
+  const b = rig(); const pb = wire(b);
+  b.poller.tick(); b.asks[0].settle(false); await b.flush(); b.advance(15000); b.asks[1].settle(true); await b.flush();
+  pb.facesReady(meta);
+  assert.equal(b.asks.length, 3, "after a success the ladder is cleared and the faces landing may ask");
+  // no residents in the answer: nothing happens
+  const z = rig(); const pz = wire(z); pz.facesReady(null); pz.facesReady({});
+  assert.equal(z.asks.length, 0);
 });
 
 test("HIDDEN TAB: nothing is armed; a failure that settles while hidden does not start the poll again; coming back is ONE ask (or what is left of a back-off), never a burst", async () => {
