@@ -20,7 +20,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const PAGE = process.env.CORE156_PAGE ? new URL(process.env.CORE156_PAGE, "file:///") : new URL("../town/pages/conversations/index.astro", import.meta.url);
+// CORE156_PAGE (a file path) points a run at a COPY of the page: a flip is made on a copy, never in the tree (conversations-circles reads the same variable)
+const PAGE = process.env.CORE156_PAGE || new URL("../town/pages/conversations/index.astro", import.meta.url);
 const page = readFileSync(PAGE, "utf8").replace(/\r\n/g, "\n");
 const FX = JSON.parse(readFileSync(new URL("./fixtures/circles.sample.json", import.meta.url), "utf8"));
 const between = (a, b) => { const i = page.indexOf(a), j = page.indexOf(b); assert.ok(i > -1 && j > i, `the page still carries ${a} … ${b}`); return page.slice(i + a.length, j); };

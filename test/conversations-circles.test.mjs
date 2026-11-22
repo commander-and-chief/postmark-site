@@ -413,8 +413,8 @@ test("B · N NEW: a reply that lands in a folded circle is counted and offered a
     assert.equal(seen.under, "50113", "under the message it answers");
     assert.equal(seen.open, "true", "its circle is open, in place");
     assert.equal(seen.isNew, true, "marked as new");
-    assert.ok(seen.scrolled > 0, `control: it sat below the pane's first screen (the pane moved ${seen.scrolled}px to show it), so 'visible' is the press's doing`);
     assert.deepEqual([seen.inPane, seen.inWindow], [true, true], "and it is ON SCREEN: inside its pane and inside the window, not merely in the page");
+    assert.ok(seen.scrolled > 0, `control: it sat below the pane's first screen (the pane moved ${seen.scrolled}px to show it), so 'on screen' is the press's doing`);
     assert.equal(seen.chip, 0, "the offer is spent");
     assert.equal(await p.evalJs(`${ROWS}.filter((r) => r.classList.contains("is-new")).length`), 1, "only the new reply is marked");
     assert.deepEqual(findReads(p), [], "and the press asked the office nothing");
@@ -494,16 +494,19 @@ test("B · REPLY AND OPEN stay: a signed-in reader has Reply on every message (i
 test("B · THE POLL DOES NOT DISTURB A READER: a poll that moved nothing redraws nothing; a reply that lands ABOVE the line they are on does not move it; their own reply lands in view", async () => {
   const { b, base } = await boot(false);
   const state = { live: [thread()] };
-  const p = await openPage(b, base, { office: makeOffice(state), width: 390, height: 844 });
+  const p = await openPage(b, base, { office: makeOffice(state), width: 390, height: 600 });
   try {
     await p.until(ROOM_SHOWN, "the room");
     await p.styled();
     await press(p, FOLD(50101));
-    // the reader puts focus on the other circle's button and climbs so that noe's opening message (after the open circle) is the line they are on
-    await p.evalJs(`(() => { const list = ${CARD}.querySelector(".c-voices"), row = ${CARD}.querySelector('.c-voice[data-say="50107"]'); list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - 10; ${FOLD(50107)}.focus({ preventScroll: true }); window.__keep = { btn: ${FOLD(50107)}, row }; window.__muts = 0; new MutationObserver((r) => { for (const m of r) window.__muts += m.addedNodes.length + m.removedNodes.length; }).observe(list, { childList: true, subtree: true }); return true; })()`);
-    const where = () => p.evalJs(`(() => { const list = ${CARD}.querySelector(".c-voices"), row = ${CARD}.querySelector('.c-voice[data-say="50107"]'); return { off: Math.round(row.getBoundingClientRect().top - list.getBoundingClientRect().top), top: Math.round(list.scrollTop) }; })()`);
+    // the reader puts focus on the other circle's button and reads claran's reply (50105, in the MIDDLE of the open circle): that is the line they are on
+    await p.evalJs(`(() => { const list = ${CARD}.querySelector(".c-voices"), row = ${CARD}.querySelector('.c-voice[data-say="50105"]'); list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - 10; ${FOLD(50107)}.focus({ preventScroll: true }); window.__keep = { btn: ${FOLD(50107)}, row }; window.__muts = 0; new MutationObserver((r) => { for (const m of r) window.__muts += m.addedNodes.length + m.removedNodes.length; }).observe(list, { childList: true, subtree: true }); return true; })()`);
+    const where = () => p.evalJs(`(() => { const list = ${CARD}.querySelector(".c-voices"), row = ${CARD}.querySelector('.c-voice[data-say="50105"]'); return { off: Math.round(row.getBoundingClientRect().top - list.getBoundingClientRect().top), top: Math.round(list.scrollTop) }; })()`);
     const at = await where();
+    assert.equal(at.off, 10, "control: the line they are on sits at the top of the pane");
     assert.ok(at.top > 100, `control: the reader has climbed into the room (the pane is scrolled ${at.top}px)`);
+    const below = await p.evalJs(`(() => { const list = ${CARD}.querySelector(".c-voices"); return Math.round(list.scrollHeight - list.scrollTop - list.clientHeight); })()`);
+    assert.ok(below > 60, `control: and is NOT at the bottom (${below}px of the room is still below the pane), so nothing here is the "following" rule's doing`);
     // (1) a poll that moved nothing
     const polled = p.calls.length;
     await p.poll();
@@ -514,7 +517,8 @@ test("B · THE POLL DOES NOT DISTURB A READER: a poll that moved nothing redraws
     assert.deepEqual(await where(), at, "the pane is where the reader left it");
     assert.equal(await p.evalJs(`document.activeElement === window.__keep.btn && ${FOLD(50107)} === window.__keep.btn`), true, "focus is on the very button it was on");
     // (2) a reply lands inside the open circle, ABOVE the line the reader is on
-    const fresh = { handle: "seth", standing: "resident", said: "An invented reply that lands above the reader. ".repeat(4).trim(), at: "2026-11-14T20:20:00.000Z", at_ms: 1794687600000, id: 50120, reply_to: 50113, circle: 50101 };
+    // (seth's "Then I'm in." (50104) is drawn before claran's line, so a reply to it lands above the reader)
+    const fresh = { handle: "seth", standing: "resident", said: "An invented reply that lands above the reader. ".repeat(4).trim(), at: "2026-11-14T20:20:00.000Z", at_ms: 1794687600000, id: 50120, reply_to: 50104, circle: 50101 };
     state.live = [thread({ voice_count: 15, latest: fresh.at, voices: [...voicesOf(), fresh] })];
     await p.poll();
     await p.until(`!!${CARD}.querySelector('.c-voice[data-say="50120"]')`, "the new reply is in the open circle");
