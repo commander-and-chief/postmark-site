@@ -256,7 +256,8 @@ const READY = (extra = "") => `(() => { const c = ${CARD}; return !!c ${extra}; 
 const ROOM_SHOWN = `(() => { const c = ${CARD}; const l = c && c.querySelector(".c-voices"); return !!l && l.querySelectorAll(".c-voice").length > 0; })()`;
 const ROWS = `[...${CARD}.querySelectorAll(".c-voices .c-voice")]`;
 const SAYS = `${ROWS}.map((r) => Number(r.dataset.say))`;
-const FOLD = (id) => `${CARD}.querySelector('[data-fold="s${id}"]')`;
+const FOLD = (id) => `${CARD}.querySelector('button.c-fold[data-fold="s${id}"]')`;      // the replies button (the circle on an open circle's line folds too: RING)
+const RING = (id) => `${CARD}.querySelector('ol.c-kids[data-circle] .c-ring[data-fold="s${id}"]')`;
 const press = (p, js) => p.evalJs(`(${js}).click(); true`);
 const findReads = (p) => p.calls.map((c) => c.path).filter((x) => /[?&](room|circle)=/.test(x));      // every read that names a room or a circle
 // the fixture room, as the office served it: who answers whom, and how deep each say sits
@@ -366,8 +367,28 @@ test("B · OPEN AND FOLD: ONE press opens the whole circle in place, every level
     for (const l of FLAT.filter((x) => circle.includes(x.id))) assert.equal(words[l.id], l.said, `reply ${l.id} is whole`);
     assert.equal(await p.evalJs(`${FOLD(50101)}.getAttribute("aria-expanded")`), "true");
     assert.equal(await p.evalJs(`!!document.getElementById(${FOLD(50101)}.getAttribute("aria-controls"))`), true, "the button names the list it opened");
-    assert.equal(await p.evalJs(`${CARD}.querySelectorAll("[data-fold]").length`), 2, "one button per circle: no reply inside the circle has a fold of its own");
+    assert.equal(await p.evalJs(`${CARD}.querySelectorAll("button.c-fold[data-fold]").length`), 2, "one button per circle: no reply inside the circle has a fold of its own");
     assert.equal(await p.evalJs(`${CARD}.querySelectorAll("[data-thread-view], [data-thread-dot]").length`), 0, "no per-level 'View replies'");
+    // THE CIRCLE ON THE LINE (Darko, 2026-11-22 19:02 EST: "have the circle design of the expandable replies reincorporated in"): the open circle's own
+    // line carries one small circle, at its midpoint, as the World's reader drew it; the levels inside carry none (they open and fold with the circle)
+    await p.styled();
+    const ring = await p.evalJs(`(() => {
+      const list = document.getElementById(${FOLD(50101)}.getAttribute("aria-controls")), r = ${RING(50101)}, line = list.querySelector(".c-ring-line");
+      const lb = list.getBoundingClientRect(), rb = r.getBoundingClientRect(), cs = getComputedStyle(r), pill = getComputedStyle(${FOLD(50107)}, "::before");
+      return { rings: ${CARD}.querySelectorAll(".c-ring").length, lines: ${CARD}.querySelectorAll(".c-ring-line").length, onOpenCircle: r.closest("ol") === list, round: cs.borderRadius, square: Math.abs(rb.width - rb.height) < 1 && rb.width >= 12,
+        midway: Math.abs((rb.top + rb.height / 2) - (lb.top + lb.height / 2)) <= 2, atTheLeft: rb.left >= lb.left - 1 && rb.right <= list.querySelector(".c-voice").getBoundingClientRect().left + 1,
+        lineFull: Math.abs(line.getBoundingClientRect().height - lb.height) <= 1, hidden: r.closest("li").getAttribute("aria-hidden"), tab: [r.tabIndex, line.tabIndex], pillRing: [pill.content !== "none", pill.borderRadius] };
+    })()`);
+    assert.deepEqual(ring, { rings: 1, lines: 1, onOpenCircle: true, round: "50%", square: true, midway: true, atTheLeft: true, lineFull: true, hidden: "true", tab: [-1, -1], pillRing: [true, "50%"] },
+      "one circle on the open circle's line: round, at the line's midpoint, left of the replies; the line runs the circle's whole height; both are a pointer's convenience (the button is the control); and the folded button wears a small circle too");
+    // pressing the circle folds the WHOLE circle, as the button does; so does pressing the line
+    await press(p, RING(50101));
+    assert.deepEqual(await p.evalJs(SAYS), OPENERS, "the circle on the line folds the whole circle");
+    assert.equal(await p.evalJs(`${CARD}.querySelectorAll(".c-ring, .c-ring-line").length`), 0, "a folded circle has no line");
+    await press(p, FOLD(50101));
+    await press(p, `${CARD}.querySelector('ol.c-kids[data-circle] .c-ring-line')`);
+    assert.deepEqual(await p.evalJs(SAYS), OPENERS, "and so does its line");
+    await press(p, FOLD(50101));
     // a second press folds it
     await press(p, FOLD(50101));
     assert.deepEqual(await p.evalJs(SAYS), OPENERS, "a second press folds the circle again");
@@ -450,7 +471,7 @@ test("B · READS: a page of rooms asks the office for the LIST and nothing else:
     assert.deepEqual(findReads(p), [], "on load: not one ?room= or ?circle= read (four rooms on the page)");
     assert.deepEqual([...new Set(p.calls.map((c) => c.path))], ["/world/conversations?closed=40"], "the office was asked for the list, and only the list");
     // every circle of every room, opened, folded and opened again
-    const pressed = await p.evalJs(`(() => { let n = 0; for (let round = 0; round < 3; round++) for (const [room, fold] of [...document.querySelectorAll(".c-thread [data-fold]")].map((f) => [f.closest(".c-thread").dataset.thread, f.dataset.fold])) { document.querySelector('.c-thread[data-thread="' + room + '"] [data-fold="' + fold + '"]').click(); n++; } return n; })()`);
+    const pressed = await p.evalJs(`(() => { let n = 0; for (let round = 0; round < 3; round++) for (const [room, fold] of [...document.querySelectorAll(".c-thread button.c-fold[data-fold]")].map((f) => [f.closest(".c-thread").dataset.thread, f.dataset.fold])) { document.querySelector('.c-thread[data-thread="' + room + '"] [data-fold="' + fold + '"]').click(); n++; } return n; })()`);
     assert.equal(pressed, 24, "control: 8 circles (2 in each of 4 rooms) were each pressed three times");
     assert.equal(await p.evalJs(`document.querySelectorAll(".c-thread .c-voices .c-voice").length`), 4 * FLAT.length, "and every statement of all four rooms is on the page");
     await new Promise((ok) => setTimeout(ok, 500));
@@ -547,10 +568,12 @@ test(`B · A ROOM LONGER THAN ITS READ (${readerNote}): the card says how many s
   try {
     await p.until(ROOM_SHOWN, "the room");
     await p.until(`!!${CARD}.querySelector("[data-room-earlier-words]")`, "the room says it is longer than its read");
-    assert.equal(await p.evalJs(`${CARD}.querySelector("[data-room-earlier-words]").textContent`), "This room holds 94 statements. The newest 14 are below, whole; the 80 said before them are not in this read.");
     assert.deepEqual(await p.evalJs(SAYS), OPENERS, "the lines the read carries are drawn as any room's are");
-    if (!HAS_READER) { assert.equal(await p.evalJs(`${CARD}.querySelectorAll("[data-room-earlier-show]").length`), 0, "no reader on this site's pinned World: no button that could not work"); return; }
     await p.until(`!!${CARD}.querySelector("[data-room-earlier-show]")`, "the way to the earlier conversations");
+    // the card says plainly what it holds, what is here, and what the button does
+    assert.equal(await p.evalJs(`${CARD}.querySelector("[data-room-earlier-words]").textContent`), "This room holds 94 statements. The newest 14 are shown below in full. The 80 said before them are not shown on this page; the button lists this room's conversations by their first line.");
+    assert.equal(await p.evalJs(`${CARD}.querySelector("[data-room-earlier-show]").textContent`), "List this room's conversations");
+    if (!HAS_READER) return;                    // a pinned World that predates the reader: the last part below (the reader withheld on purpose) is what holds
     await new Promise((ok) => setTimeout(ok, 600));
     assert.deepEqual(findReads(p), [], "nothing was read for it on load");
     // two presses at once: ONE read
@@ -578,6 +601,31 @@ test(`B · A ROOM LONGER THAN ITS READ (${readerNote}): the card says how many s
     assert.equal(q.calls.length, asked, "no ask was made while the page is backing off");
     assert.equal(await q.evalJs(`${CARD}.querySelector("[data-circle-reader]")`), null);
   } finally { await q.close(); }
+  // A ROOM OF OLDER TALK (its lines carry no id): the World's reader lists CONVERSATIONS, and such a room has none to list, so there is NO button that
+  // could show nothing; the card still says what it holds. (Darko on dev, 2026-11-22 19:02 EST, of a 1,992-statement room of this kind: "a gigantic block
+  // … that I can't interact with": its one button led to "We couldn't read this".)
+  const oldTalk = () => thread({ voice_count: 1992, voices: voicesOf().map(({ id, reply_to, circle, ...v }) => v), voices_earlier: { remaining: 1978, before_ms: 1794686460000, before: "2026-11-14T20:01:00.000Z", note: "pass voices_before" } });
+  const o = await openPage(b, base, { office: makeOffice({ live: [oldTalk()], room: (id) => roomFind(id) }), signedIn: true });
+  try {
+    await o.until(ROOM_SHOWN, "the room");
+    await o.until(SAY, "the speak box (so the page's module, and with it the reader's hook, has loaded)");
+    await o.poll();
+    await new Promise((ok) => setTimeout(ok, 700));
+    assert.equal(await o.evalJs(`${CARD}.querySelector("[data-room-earlier-words]").textContent`), "This room holds 1992 statements. The newest 14 are shown below in full. The 1978 said before them are not shown on this page.");
+    assert.equal(await o.evalJs(`${CARD}.querySelectorAll("[data-room-earlier-show]").length`), 0, "no button that could only fail");
+    assert.equal(await o.evalJs(`${ROWS}.length`), 14, "its lines are all there, whole, in order (plain lines: nothing to fold)");
+    assert.deepEqual(findReads(o), [], "and nothing was read for it");
+  } finally { await o.close(); }
+  // THE READER WITHHELD (a pinned World that predates it): the press says so, and asks the office nothing
+  const bare = await boot(false);
+  const n = await openPage(bare.b, bare.base, { office: makeOffice({ live: [long()], room: (id) => roomFind(id) }) });
+  try {
+    await n.until(`!!${CARD}?.querySelector("[data-room-earlier-show]")`, "the button");
+    await press(n, `${CARD}.querySelector("[data-room-earlier-show]")`);
+    await n.until(`/isn't available on this page/.test(${CARD}.querySelector("[data-room-earlier-note]")?.textContent ?? "")`, "the page says the reader is not here");
+    assert.equal(await n.evalJs(`${CARD}.querySelectorAll("[data-room-earlier-show]").length`), 0);
+    assert.deepEqual(findReads(n), [], "no read was made for a reader that is not there");
+  } finally { await n.close(); }
 });
 
 test("RECONCILE: a poll KEEPS a card for the same thread (same node), adds the new one, removes the one that left, and a no-change poll moves nothing", async () => {

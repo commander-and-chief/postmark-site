@@ -569,7 +569,24 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
         if (open) {
           var id = "c-kids-" + st.uid + "-" + node.key;
           b.setAttribute("aria-controls", id);
-          wrap.appendChild(kidsList(node, st, reply, 1, id));
+          var list = kidsList(node, st, reply, 1, id);
+          // THE CIRCLE ON THE LINE (Darko, 2026-11-22 19:02 EST: "have the circle design of the expandable replies reincorporated in. It's a very small but
+          // just like nice UI type touch"). An open circle is drawn the way the World's reader draws one (WLD-178): a thin line down its side and a small
+          // circle ON the line at its midpoint; pressing either folds the whole circle, exactly as the button above does. They are a pointer's
+          // convenience and say nothing new, so they are kept out of the keyboard's and a screen reader's way: the button is the control.
+          list.setAttribute("data-circle", "");
+          var ctl = el("li", "c-ring-row");
+          ctl.setAttribute("aria-hidden", "true");
+          ["c-ring-line", "c-ring"].forEach(function (cls) {
+            var x = el("button", cls);
+            x.type = "button";
+            x.tabIndex = -1;
+            x.setAttribute("data-fold", node.key);
+            x.title = "Fold " + repliesWords(node.total);
+            ctl.appendChild(x);
+          });
+          list.appendChild(ctl);
+          wrap.appendChild(list);
           return wrap;
         }
         // folded, with replies the reader has not been shown: "N new" opens the circle with them on screen
@@ -714,11 +731,16 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
           card.insertBefore(box, card.querySelector(".c-voices"));
         }
         var words = box.querySelector("[data-room-earlier-words]");
-        var text = "This room holds " + statementsWords(t) + ". The newest " + (t.voices || []).length + " are below, whole; the "
-          + Number(ve.remaining) + " said before them are not in this read.";
+        // The World's reader lists a room's CONVERSATIONS (a say with an id, and its replies). A room of older talk, whose lines carry no id, has none
+        // to list (the office answers such a room with its newest lines again), so the button is offered only where it can show something earlier.
+        var listable = (t.voices || []).some(function (v) { return sayKey(v && v.id) !== null; });
+        var canList = listable && !!hook() && !!t.id;
+        var text = "This room holds " + statementsWords(t) + ". The newest " + (t.voices || []).length + " are shown below in full. The "
+          + Number(ve.remaining) + " said before them are not shown on this page"
+          + (canList && !card.__cr ? "; the button lists this room's conversations by their first line." : ".");
         if (words && words.textContent !== text) words.textContent = text;
-        if (card.__cr || box.querySelector("[data-room-earlier-show]") || !hook() || !t.id) return;
-        var b = el("button", "c-more c-room-earlier-show", "Show this room's earlier conversations");
+        if (card.__cr || box.querySelector("[data-room-earlier-show]") || !canList) return;
+        var b = el("button", "c-more c-room-earlier-show", "List this room's conversations");
         b.type = "button";
         b.setAttribute("data-room-earlier-show", "");
         b.addEventListener("click", function () { showEarlierOf(card); });
@@ -1915,6 +1937,25 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
     .convo .c-kids > .c-voice { border-top: 1px dashed rgba(232, 196, 139, 0.14); }
     /* a very long back-and-forth stops stepping in (its words must keep their width on a phone); each reply still sits under what it answers */
     .convo .c-kids[data-deep] { margin-left: 0; padding-left: 0; border-left: 0; }
+    /* THE CIRCLE (Darko, 2026-11-22: "the circle design of the expandable replies"): the replies button wears a small circle, and an OPEN circle's own
+       line carries one at its midpoint, as the World's reader draws it (WLD-178). The line is drawn in two pieces so the circle needs no fill behind it.
+       Line and circle fold the whole circle, like the button; the levels inside keep their plain thin lines (they open and fold with it). */
+    .convo .c-fold:not(.c-fold-new)::before {
+      content: ""; flex: none; box-sizing: border-box; width: 0.85rem; height: 0.85rem; margin-right: 0.6em;
+      border: 2px solid currentColor; border-radius: 50%; background: rgba(232, 196, 139, 0.22);
+    }
+    .convo .c-fold[aria-expanded="true"]::before { background: transparent; }
+    .convo .c-kids[data-circle] { position: relative; margin-left: 0.1rem; padding-left: 1.75rem; border-left: 0; }
+    .convo .c-ring-row { position: absolute; left: 0; top: 0; bottom: 0; width: 1.5rem; list-style: none; }
+    .convo .c-ring-line, .convo .c-ring { position: absolute; margin: 0; padding: 0; cursor: pointer; color: var(--pm-gold); background: transparent; }
+    .convo .c-ring-line { inset: 0; width: 100%; border: 0; border-radius: 0; }
+    .convo .c-ring-line::before {
+      content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); border-radius: 1px; opacity: 0.45;
+      background: linear-gradient(to bottom, currentColor 0, currentColor calc(50% - 0.85rem), transparent calc(50% - 0.85rem), transparent calc(50% + 0.85rem), currentColor calc(50% + 0.85rem), currentColor 100%);
+    }
+    .convo .c-ring { left: 50%; top: 50%; width: 1.05rem; height: 1.05rem; box-sizing: border-box; border: 2px solid currentColor; border-radius: 50%; transform: translate(-50%, -50%); opacity: 0.85; }
+    .convo .c-ring-line:hover::before { opacity: 0.85; }
+    .convo .c-ring:hover, .convo .c-ring-line:hover + .c-ring { opacity: 1; background: rgba(232, 196, 139, 0.2); }
     /* a reply the reader has not seen before: marked, and said in words beside its time (colour is never the only sign) */
     .convo .c-voice.is-new { background: rgba(232, 196, 139, 0.09); box-shadow: inset 3px 0 0 var(--pm-gold); border-radius: 4px; padding: 0.5em 0.5em 0.45em 0.75em; }
     .convo .c-voice.is-new > .c-ago::before { content: "new · "; color: var(--pm-gold-bright); }
@@ -1928,6 +1969,8 @@ import PostmarkLayout from "@/layouts/PostmarkLayout.astro";
       /* the time sits beside the name, on the message's first line (until CORE-156 it fell under the words) */
       .convo .c-voice > .c-ago { grid-column: 2; grid-row: 1; }
       .convo .c-kids { margin-left: 0.25rem; padding-left: 0.6rem; }
+      .convo .c-kids[data-circle] { margin-left: 0; padding-left: 1.55rem; }
+      .convo .c-ring-row { width: 1.4rem; }
       /* a finger's target: the links under a message stand taller, the replies button taller still */
       .convo .c-act { padding: 0.55em 0; }
       .convo .c-fold { min-height: 2.6rem; padding: 0.5em 1.05em; }
