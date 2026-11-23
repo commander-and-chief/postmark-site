@@ -215,6 +215,7 @@ function makeOffice(state) {
     if ((m = /^\/world\/conversations\?circle=(\d+)(?:&after=(\d+))?$/.exec(path))) {
       if (state.circleRoom) return { status: 200, body: { now: 1, find: { circle: Number(m[1]), history: "complete", source: "record", room: roomHeader(state.circleRoom), circle_read: { circle: Number(m[1]), path: [Number(m[1])], says: 1, people: 1, lines: [], next: null, complete: true, budget: { bytes: 8192, used: 1 } }, sparks: null } } };
       const page = circlePage(m[2] ? 2 : 1);
+      if (state.circleSays) page.find.circle_read.says = state.circleSays;      // CORE-156: the office's own count of the circle, when a test lets it grow
       // CORE-117: `echoCircle` makes the invented office answer a DIFFERENT circle id as itself (same invented lines), so a reader that navigates to another circle
       // in the one view reads what it asked for, not a page that names circle 50101
       if (state.echoCircle) { const id = Number(m[1]); page.find.circle = id; page.find.circle_read.circle = id; page.find.circle_read.path = [id]; }
@@ -460,7 +461,7 @@ test("B · N NEW: a reply that lands in a folded circle is counted and offered a
   } finally { await p.close(); }
 });
 
-test("B · READS: a page of rooms asks the office for the LIST and nothing else: no read per room on load, and none for any press (until CORE-156 every card read its own ?room=)", async () => {
+test("B · READS: a page of rooms asks the office for the LIST and nothing else: no read per room on load, and none for opening or folding any circle (until CORE-156 every card read its own ?room=); Open is another view, and is the one ask the control at the end sees", async () => {
   const { b, base } = await boot(true);                  // the reader IS available here, and the office WOULD answer ?room= and ?circle=: the page simply does not ask
   const second = thread({ id: ROOM_B, place: "The Quay", at: { x: 5, y: 5 } });
   const closed = [thread({ id: "t1794600000000-old", live: false, place: "An Earlier Room" }), thread({ id: "t1794500000000-older", live: false, place: "An Older Room" })];
@@ -561,7 +562,7 @@ test("B · THE POLL DOES NOT DISTURB A READER: a poll that moved nothing redraws
   } finally { await p.close(); }
 });
 
-test(`B · A ROOM LONGER THAN ITS READ (${readerNote}): the card says how many statements the room holds and how many are here, and its earlier conversations cost ONE read, on the press only (never twice, never while the office is not answering)`, async () => {
+test(`B · A ROOM LONGER THAN ITS READ (${readerNote}): the card says how many statements the room holds and how many are here; listing its conversations costs ONE read, on the press, and none on any poll after it, however the room moves (never twice, never while the office is not answering); a room of older talk says there is nothing to open`, async () => {
   const { b, base } = await boot(true);
   const long = () => thread({ voice_count: 94, voices_earlier: { remaining: 80, before_ms: 1794686460000, before: "2026-11-14T20:01:00.000Z", note: "pass voices_before=1794686460000 for the 80 before these" } });
   const state = { live: [long()], room: (id) => roomFind(id) };
@@ -585,6 +586,20 @@ test(`B · A ROOM LONGER THAN ITS READ (${readerNote}): the card says how many s
     assert.equal(await p.evalJs(`${CARD}.querySelectorAll("[data-room-earlier-show]").length`), 0, "the button is spent");
     assert.equal(await p.evalJs(`${CARD}.querySelectorAll(".cr-head").length`), 0, "the reader repeats no header (the card owns it)");
     assert.deepEqual(await p.evalJs(SAYS), OPENERS, "and the room's own messages are still drawn whole beside it");
+    // ONE READ MEANS ONE: the room keeps talking, and several real polls answer after the mount (until CORE-156's review the page re-read ?room= on
+    // every poll that moved a room whose reader was mounted). The list is read each time; the room is never read again.
+    const listReads = () => p.calls.filter((c) => c.path.startsWith("/world/conversations?closed=")).length;
+    for (let i = 1; i <= 3; i++) {
+      const before = listReads();
+      const said = { handle: "noe", standing: "resident", said: `An invented new opening message, number ${i}.`, at: `2026-11-14T20:3${i}:00.000Z`, at_ms: 1794688200000 + i * 60000, id: 50130 + i, circle: 50130 + i };
+      state.live = [{ ...long(), voice_count: 94 + i, latest: said.at, voices: [...voicesOf(), ...Array.from({ length: i }, (_, k) => ({ ...said, id: 50131 + k, circle: 50131 + k, said: `An invented new opening message, number ${k + 1}.` }))] }];
+      await p.poll();
+      for (const t0 = Date.now(); Date.now() - t0 < 9000 && listReads() === before;) await new Promise((ok) => setTimeout(ok, 60));
+      await p.until(`${CARD}.querySelector("[data-c-count]").textContent === "${94 + i} statements"`, `poll ${i} moved the room`);
+      await new Promise((ok) => setTimeout(ok, 400));
+    }
+    assert.equal(await p.evalJs(`${ROWS}.length`), 3 + 3, "control: the room moved three times, and its own pane took each new message");
+    assert.deepEqual(findReads(p), [`/world/conversations?room=${ROOM}`], "three polls that each moved the room: still ONE ?room= read, the press's, and no ?circle=");
   } finally { await p.close(); }
   // the office is not answering: the press asks it nothing more, and says so
   const down = { live: [long()], room: (id) => roomFind(id) };
@@ -612,7 +627,9 @@ test(`B · A ROOM LONGER THAN ITS READ (${readerNote}): the card says how many s
     await o.until(SAY, "the speak box (so the page's module, and with it the reader's hook, has loaded)");
     await o.poll();
     await new Promise((ok) => setTimeout(ok, 700));
-    assert.equal(await o.evalJs(`${CARD}.querySelector("[data-room-earlier-words]").textContent`), "This room holds 1992 statements. The newest 14 are shown below in full. The 1978 said before them are not shown on this page.");
+    assert.equal(await o.evalJs(`${CARD}.querySelector("[data-room-earlier-words]").textContent`), "This room holds 1992 statements. The newest 14 are shown below in full. The 1978 said before them are not shown on this page. The messages in this room can't be replied to, so there is nothing here to open, fold or answer.",
+      "the card says in one plain line that nothing in it opens, so nobody presses at nothing");
+    assert.equal(await o.evalJs(`${CARD}.querySelectorAll("[data-fold], [data-circle-open], [data-reply]").length`), 0, "and indeed nothing in it opens, folds or takes a reply, signed in or not");
     assert.equal(await o.evalJs(`${CARD}.querySelectorAll("[data-room-earlier-show]").length`), 0, "no button that could only fail");
     assert.equal(await o.evalJs(`${ROWS}.length`), 14, "its lines are all there, whole, in order (plain lines: nothing to fold)");
     assert.deepEqual(findReads(o), [], "and nothing was read for it");
@@ -627,6 +644,120 @@ test(`B · A ROOM LONGER THAN ITS READ (${readerNote}): the card says how many s
     assert.equal(await n.evalJs(`${CARD}.querySelectorAll("[data-room-earlier-show]").length`), 0);
     assert.deepEqual(findReads(n), [], "no read was made for a reader that is not there");
   } finally { await n.close(); }
+});
+
+// Darko on dev, 2026-11-22 19:02 EST: "I see a gigantic block for the evening lantern, the harbor reach, with 1,992 statements that I can't interact with."
+// Measured there: the block was the speakers list, 242 names, 1,672px at 1440 and 6,873px on a phone, above the room's first message.
+test("B · A CROWDED ROOM'S SPEAKERS ARE CAPPED: a first run of names and 'and N more', which opens the rest in place and folds them again; no ask; a poll keeps what the reader opened", async () => {
+  const { b, base } = await boot(false);
+  const crowd = Array.from({ length: 242 }, (_, i) => `speaker-${String(i + 1).padStart(3, "0")}`);
+  const state = { live: [thread({ participants: crowd }), thread({ id: ROOM_B, place: "The Quay", participants: crowd.slice(0, 14) })] };
+  const p = await openPage(b, base, { office: makeOffice(state), width: 390, height: 844 });
+  try {
+    await p.until(ROOM_SHOWN, "the room");
+    await p.styled();
+    const people = `${CARD}.querySelector(".c-people")`;
+    const names = () => p.evalJs(`[...${people}.querySelectorAll(".c-person")].map((x) => x.dataset.handle)`);
+    const more = `${people}.querySelector("[data-people-more]")`;
+    assert.deepEqual(await names(), crowd.slice(0, 12), "the first twelve speakers, in the office's order");
+    assert.deepEqual(await p.evalJs(`[${more}.textContent, ${more}.getAttribute("aria-expanded"), ${more}.tagName]`), ["and 230 more", "false", "BUTTON"], "and the rest behind one press that says how many");
+    assert.equal(await p.evalJs(`${CARD}.querySelector("[data-c-speakers]").textContent`), "242 speakers", "the count above still says all of them");
+    const capped = await p.evalJs(`Math.round(${people}.getBoundingClientRect().height)`);
+    assert.ok(capped < 400, `the speakers block is short at phone width (${capped}px), not thousands of pixels`);
+    // a room with a couple more than twelve shows them all: no "and 2 more"
+    assert.deepEqual(await p.evalJs(`(() => { const c = document.querySelector('[data-thread="${ROOM_B}"] .c-people'); return [c.querySelectorAll(".c-person").length, c.querySelectorAll("[data-people-more]").length]; })()`), [14, 0]);
+    // the press opens the rest IN PLACE, and asks the office nothing
+    const asked = p.calls.length;
+    await p.evalJs(`${more}.focus(); ${more}.click(); true`);
+    assert.deepEqual(await names(), crowd, "all 242, in place");
+    assert.deepEqual(await p.evalJs(`[${more}.textContent, ${more}.getAttribute("aria-expanded"), document.activeElement === ${more}]`), ["show fewer", "true", true], "the same press folds them again, and the keyboard is still on it");
+    const opened = await p.evalJs(`Math.round(${people}.getBoundingClientRect().height)`);
+    assert.ok(opened > capped * 5, `control: uncapped, the block is ${opened}px tall at phone width`);
+    await new Promise((ok) => setTimeout(ok, 300));
+    assert.deepEqual([...new Set(p.calls.slice(asked).map((c) => c.path))].filter((x) => !x.startsWith("/world/conversations?closed=")), [], "no ask for the names: they are the thread's own");
+    assert.deepEqual(findReads(p), []);
+    // a poll that moves the room keeps the list as the reader left it
+    state.live = [thread({ participants: crowd, voice_count: 15, latest: "2026-11-14T20:16:00.000Z" }), state.live[1]];
+    await p.poll();
+    await p.until(`${CARD}.querySelector("[data-c-count]").textContent === "15 statements"`, "the poll moved the room");
+    assert.equal((await names()).length, 242, "still open after the poll");
+    await p.evalJs(`${more}.click(); true`);
+    assert.deepEqual(await names(), crowd.slice(0, 12), "folded again");
+    assert.equal(await p.evalJs(`${more}.textContent`), "and 230 more");
+  } finally { await p.close(); }
+});
+
+// Truey's review of ed999477f (2026-11-22): "The one-conversation view asks `?circle=` on load and again on every poll … one tab resting in this view asks
+// the office for a circle about every 7 seconds for as long as it stays open." On the w48 office each such ask scans the whole record.
+test(`ONE CONVERSATION · ASKS (${readerNote}): arriving asks the office for the circle ONCE; no poll asks for it again, moved or unmoved; new lines are offered from the list the page already holds; one press is one ask, and none while the office is not answering`, async () => {
+  if (!HAS_READER) return;
+  const { b, base } = await boot(true);
+  const state = { live: [thread()], room: (id) => roomFind(id) };
+  const p = await openPage(b, base, { office: makeOffice(state), hash: "#circle-50101" });
+  const circleAsks = () => p.calls.map((c) => c.path).filter((x) => /[?&]circle=/.test(x));
+  const roomAsks = () => p.calls.map((c) => c.path).filter((x) => /[?&]room=/.test(x));
+  const listAsks = () => p.calls.filter((c) => c.path.startsWith("/world/conversations?closed=")).length;
+  // one REAL poll, answered: the page's own ask of the list (its hashchange path, the same tick the 7 s timer makes), waited for
+  const polled = async (change) => {
+    const before = listAsks();
+    if (change) change();
+    await p.evalJs(`window.dispatchEvent(new HashChangeEvent("hashchange")); true`);
+    for (const t0 = Date.now(); Date.now() - t0 < 9000 && listAsks() === before;) await new Promise((ok) => setTimeout(ok, 60));
+    assert.ok(listAsks() > before, "control: the poll ran");
+    await new Promise((ok) => setTimeout(ok, 500));
+  };
+  const FRESH = `${SELECTED}.querySelector("[data-selected-fresh]")`;
+  const says = () => p.evalJs(`(() => { const r = ${FRESH}; return r && !r.hidden ? [r.querySelector("[data-selected-fresh-words]").textContent, r.querySelector("[data-selected-refresh]").textContent] : null; })()`);
+  try {
+    await p.until(SELECTED_READY, "the conversation");
+    await p.until(`!!${FRESH} && !${FRESH}.hidden`, "the view says how it updates");
+    await new Promise((ok) => setTimeout(ok, 500));
+    assert.deepEqual(circleAsks(), ["/world/conversations?circle=50101"], "arriving on the link: exactly ONE ask for the circle (the page's; the reader is handed that answer, not sent to ask again)");
+    assert.deepEqual(roomAsks(), [], "and none for the room");
+    assert.ok(await p.evalJs(`${SELECTED}.querySelectorAll("li[data-say]").length`) >= 1, "control: the reader drew the circle from that one answer");
+    assert.deepEqual(await says(), ["This view does not update by itself.", "Refresh"], "the view says plainly that it does not update by itself, with its one press");
+    // three answered polls: nothing moved; another room spoke and this room took a new OPENING message; nothing moved again
+    await polled();
+    const opener = { handle: "noe", standing: "resident", said: "An invented new opening message.", at: "2026-11-14T20:22:00.000Z", at_ms: 1794687720000, id: 50122, circle: 50122 };
+    await polled(() => { state.live = [thread({ voice_count: 15, latest: opener.at, voices: [...voicesOf(), opener] }), thread({ id: ROOM_B, place: "The Quay", voice_count: 3, voices: voicesOf().slice(0, 3) })]; });
+    await polled();
+    assert.deepEqual(circleAsks(), ["/world/conversations?circle=50101"], "three answered polls, moved and unmoved: NOT ONE more ask for the circle");
+    assert.deepEqual(roomAsks(), []);
+    assert.deepEqual(await says(), ["This view does not update by itself.", "Refresh"], "a new opening message elsewhere in the room is not new in THIS conversation");
+    // a reply lands IN this conversation: the list the page already holds shows it, and the view offers it. Still no ask.
+    const fresh = { handle: "seth", standing: "resident", said: "An invented new reply, deep in the circle.", at: "2026-11-14T20:25:00.000Z", at_ms: 1794687900000, id: 50120, reply_to: 50113, circle: 50101 };
+    await polled(() => { state.live = [thread({ voice_count: 16, latest: fresh.at, voices: [...voicesOf(), opener, fresh] })]; });
+    assert.deepEqual(await says(), ["1 new in this conversation.", "Show"], "offered from the list read: the office's count for this conversation was 10, the list now holds 11");
+    assert.equal(circleAsks().length, 1, "and offering it asked nothing");
+    // the press: ONE ask, however fast it is pressed
+    state.circleSays = 11;
+    await p.evalJs(`(() => { const b = ${FRESH}.querySelector("[data-selected-refresh]"); b.click(); b.click(); b.dispatchEvent(new MouseEvent("click", { bubbles: true })); return true; })()`);
+    await p.until(`${FRESH}.querySelector("[data-selected-fresh-words]").textContent === "This view does not update by itself."`, "the press read the conversation again, and the offer is spent");
+    await new Promise((ok) => setTimeout(ok, 400));
+    assert.deepEqual(circleAsks(), ["/world/conversations?circle=50101", "/world/conversations?circle=50101"], "three presses at once: ONE more ask");
+    // and the polls after it ask nothing more
+    await polled(); await polled();
+    assert.equal(circleAsks().length, 2, "two more polls: still two asks in all (arriving, and the one press)");
+    assert.deepEqual(roomAsks(), []);
+    // the office stops answering: a press asks it nothing, and says so
+    state.down = true;
+    await p.evalJs(`window.dispatchEvent(new HashChangeEvent("hashchange")); true`);
+    await p.until(`!!document.querySelector("[data-live] [data-office-down]")`, "the page is waiting out a failed read");
+    const attempts = p.calls.length;
+    await press(p, `${FRESH}.querySelector("[data-selected-refresh]")`);
+    await new Promise((ok) => setTimeout(ok, 400));
+    assert.equal(p.calls.length, attempts, "no ask of any kind was made while the page is backing off");
+    assert.match((await says())[0], /isn't answering just now/);
+  } finally { await p.close(); }
+  // arriving by a message's Open (the press B puts on every opening message): the same ONE ask
+  const q = await openPage(b, base, { office: makeOffice({ live: [thread()], room: (id) => roomFind(id) }) });
+  try {
+    await q.until(ROOM_SHOWN, "the room");
+    await press(q, `${CARD}.querySelector('a[data-circle-open="50107"]')`);
+    await q.until(SELECTED_READY, "the one conversation");
+    await new Promise((ok) => setTimeout(ok, 600));
+    assert.deepEqual(q.calls.map((c) => c.path).filter((x) => /[?&](circle|room)=/.test(x)), ["/world/conversations?circle=50107"], "Open: ONE ask");
+  } finally { await q.close(); }
 });
 
 test("RECONCILE: a poll KEEPS a card for the same thread (same node), adds the new one, removes the one that left, and a no-change poll moves nothing", async () => {
