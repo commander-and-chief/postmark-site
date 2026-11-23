@@ -372,6 +372,7 @@ test("B · OPEN AND FOLD: ONE press opens the whole circle in place, every level
     // THE CIRCLE ON THE LINE (Darko, 2026-11-22 19:02 EST: "have the circle design of the expandable replies reincorporated in"): the open circle's own
     // line carries one small circle, at its midpoint, as the World's reader drew it; the levels inside carry none (they open and fold with the circle)
     await p.styled();
+    assert.equal(await p.evalJs(`${CARD}.querySelectorAll("ol.c-kids[data-circle] .c-ring").length`), 1, "the open circle's line carries its circle");
     const ring = await p.evalJs(`(() => {
       const list = document.getElementById(${FOLD(50101)}.getAttribute("aria-controls")), r = ${RING(50101)}, line = list.querySelector(".c-ring-line");
       const lb = list.getBoundingClientRect(), rb = r.getBoundingClientRect(), cs = getComputedStyle(r), pill = getComputedStyle(${FOLD(50107)}, "::before");
