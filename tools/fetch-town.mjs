@@ -40,6 +40,11 @@ const PUBLIC_API = (process.env.POSTMARK_PUBLIC_API || DEFAULT_API).replace(/\/+
 // that moved (fetch-town-data.mjs § THE LETTERS SINCE LAST PASS). Unset, every
 // run reads the whole corpus, as it always has.
 const LETTER_CACHE = process.env.POSTMARK_LETTER_CACHE || null;
+// Where the past calendar is kept between builds (CORE-180, tools/lib/past-events-cache.mjs): the site's own last PUBLISHED events.json. Every pass writes it to
+// public/atelier/postmark/data, so it survives a clean Actions checkout and the box refresh's reset and clean, which the tracked src/data/postmark/events.json does not.
+// It is one static GET, not the office's keyless API; with it a build reads the newest list page and only the one-event reads that are new, changing or due, not the whole
+// lasting list again. Set POSTMARK_EVENTS_SEED_URL to another address, or to the empty string for none (the whole list is read, as before).
+const EVENTS_SEED_URL = process.env.POSTMARK_EVENTS_SEED_URL !== undefined ? (process.env.POSTMARK_EVENTS_SEED_URL || null) : `${TOWN_BASE}/data/events.json`;
 const TOWN_ARG = arg("--town", null);
 const TOWN = TOWN_ARG ? resolve(TOWN_ARG) : null;
 if (TOWN) refuseLinkedCheckout(TOWN);
@@ -142,7 +147,7 @@ try {
   if (TOWN && !existsSync(join(TOWN, "MEEPS"))) {
     console.warn(`WARN: supplied --town has no MEEPS directory; meeps.json will use the committed snapshot: ${TOWN}`);
   }
-  const result = await buildOfficeData({ apiBase: API, dataDir: DATA_DIR, townRoot: TOWN, letterCachePath: LETTER_CACHE });
+  const result = await buildOfficeData({ apiBase: API, dataDir: DATA_DIR, townRoot: TOWN, letterCachePath: LETTER_CACHE, eventsSeedUrl: EVENTS_SEED_URL });
   for (const [name, value] of Object.entries(result.files)) writeDataFile(name, value);
   // ── WHETHER THE INVITATION ROLL IS LIVE (POS-576) ─────────────────────────
   // A build input, not a public file: the join carries an invite only for a

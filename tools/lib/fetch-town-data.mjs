@@ -5,6 +5,7 @@ import { readFileSync, readdirSync, existsSync, writeFileSync, renameSync, mkdir
 import { join, dirname } from "node:path";
 import { buildThreads, normalizeProfile, parseFrontmatter, readResidentProfiles } from "./town.mjs";
 import { publicRegistry } from "./public-registry.mjs";
+import { PAST_REFRESH_MAX, PAST_SETTLE_MS, joinHeld, mergeEvidence, mergePast, pickEvidenceWork, readEventsSeed, settledHeldPage } from "./past-events-cache.mjs";
 
 export const RESIDENT_CARD_LANES = 6;
 
@@ -785,6 +786,9 @@ export async function buildOfficeData({
   // Where the last pass's letters are kept (fetchLettersSince); null reads the
   // whole corpus every time, as every run without a home for it always has.
   letterCachePath = null,
+  // Where the last PUBLISHED events.json is read from, `<town base>/data/events.json` (tools/lib/past-events-cache.mjs): the held state the past calendar is built
+  // incrementally over (CORE-180). Null reads the whole lasting list and every one-event read, as every run without a seed always has.
+  eventsSeedUrl = null,
 } = {}) {
   const readSnapshot = snapshotReader(dataDir);
   const endpointGaps = [];
@@ -1068,7 +1072,12 @@ export async function buildOfficeData({
   // THE LASTING EVENTS (CORE-82): the past-events list and each event's evidence, kept beside the calendar. A door that
   // is not live (400/404/405/422: it does not know `past`) says "unavailable" in the file and a gap here, and the committed snapshot's events
   // stand. Any other failure of the LIST (a 5xx, a timeout, a body that is not the list) fails the build, exactly as the calendar's own read does; one event's own read that fails is "unavailable" for that event.
-  const eventsRead = await fetchEvents({ apiBase, fetchImpl, retries, gate, calendar, snapshot: readSnapshot("events.json", EMPTY_EVENTS) });
+  // THE SEED (CORE-180): the last published events.json, one static GET that is not the office's keyless API. Absent (a first build) or unreadable (said here), the whole
+  // list and every one-event read are made, exactly as before; a seed never stands in for a failed read, and a failed list read still fails the build below.
+  const seedRead = await readEventsSeed({ url: eventsSeedUrl, fetchImpl });
+  if (seedRead.state === "unreadable") endpointGaps.push(`events.json: the last published file (${eventsSeedUrl}) could not be read (${seedRead.reason}), so the whole lasting list and every one-event read are made this build`);
+  if (seedRead.state === "none") endpointGaps.push(`events.json: no published file at ${eventsSeedUrl} yet (a first build), so the whole lasting list and every one-event read are made this build`);
+  const eventsRead = await fetchEvents({ apiBase, fetchImpl, retries, gate, calendar, snapshot: readSnapshot("events.json", EMPTY_EVENTS), seed: seedRead.state === "ok" ? seedRead.events : null });
   endpointGaps.push(...eventsRead.gaps);
 
   // THE SPARK REGISTER (CORE-121): the public standing-mark register's Sparks; any failure is "unavailable" in the file and a gap, never an empty catalogue.
@@ -1216,30 +1225,37 @@ export const PAST_PAGES_MAX = 25;      // 40 a page: up to 1,000 past events a b
 export const EVIDENCE_MAX = 400;       // one-event reads per build, newest ends first
 const REFUSED = new Set([400, 404, 405, 422]);
 
-export async function fetchPastEvents({ apiBase, fetchImpl = fetch, retries = 3, gate = null, maxPages = PAST_PAGES_MAX } = {}) {
+// INCREMENTAL (CORE-180). With `known` (a Map of the event ids the build already holds, from tools/lib/past-events-cache.mjs) the list is followed newest-first only until a page
+// whose events are ALL held and all settled (ended more than PAST_SETTLE_MS before the list's own as_of): `stopped` is then true, `complete` false, and the caller keeps the held
+// events older than that page. Without `known` this is the full read it always was. `complete` is true only when the list's own end was reached; `pages` counts the reads made.
+export async function fetchPastEvents({ apiBase, fetchImpl = fetch, retries = 3, gate = null, maxPages = PAST_PAGES_MAX, known = null } = {}) {
   const events = [];
   let next = null;
   let note = null;
   let asOf = null;
   let before = null;
+  let pages = 0;
+  let stopped = false;
   for (let page = 0; page < maxPages; page++) {
     const args = encodeURIComponent(JSON.stringify({ past: true, ...(before ? { before } : {}) }));
     let body;
     try {
       ({ body } = await apiGet(`/town/apex?read=calendar&args=${args}`, { apiBase, fetchImpl, retries, gate }));
     } catch (error) {
-      if (REFUSED.has(error?.status)) return page === 0 ? { read: "unavailable", events: [], next: null, note: null, asOf: null } : { read: "office", events, next: { past: true, before }, note, asOf };
+      if (REFUSED.has(error?.status)) return page === 0 ? { read: "unavailable", events: [], next: null, note: null, asOf: null, pages, complete: false, stopped: false } : { read: "office", events, next: { past: true, before }, note, asOf, pages, complete: false, stopped: false };
       throw error;
     }
     if (!Array.isArray(body?.past)) throw new Error(`/town/apex?read=calendar&args={past}: "past" is not an array, so this is not the lasting list the contract names`);
+    pages++;
     events.push(...body.past);
     asOf = body.as_of ?? asOf;
     note = body.note ?? note;
     next = body.next && typeof body.next === "object" && body.next.before ? body.next : null;
     if (!next) break;
+    if (known && settledHeldPage(body.past, known, Date.parse(asOf))) { stopped = true; break; }
     before = next.before;
   }
-  return { read: "office", events, next, note, asOf };
+  return { read: "office", events, next, note, asOf, pages, complete: !next && !stopped, stopped };
 }
 
 /** The one-event read for each event that has had its doors open and is not cancelled; a failure is `unavailable`, never an empty answer. */
@@ -1264,24 +1280,48 @@ export async function fetchEventEvidence({ apiBase, fetchImpl = fetch, retries =
   return evidence;
 }
 
-/** Both reads, as events.json. `snapshot` is the committed file: its events stand while the lasting list is not served. */
-export async function fetchEvents({ apiBase, fetchImpl = fetch, retries = 3, gate = null, calendar = EMPTY_CALENDAR, snapshot = EMPTY_EVENTS } = {}) {
-  const past = await fetchPastEvents({ apiBase, fetchImpl, retries, gate });
-  const kept = past.read === "unavailable" && Array.isArray(snapshot?.past?.events) ? snapshot.past.events : [];
-  const pastEvents = past.read === "unavailable" ? kept : past.events;
+/**
+ * Both reads, as events.json. `snapshot` is the committed file: its events stand while the lasting list is not served.
+ *
+ * `seed` (CORE-180) is the last PUBLISHED events.json (tools/lib/past-events-cache.mjs readEventsSeed), the build's held state across clean checkouts and the box's resets.
+ * With it the build is INCREMENTAL: the list is followed only until a page it already holds and that settled, the events behind that page are kept as held, and the one-event
+ * reads are asked only for what the calendar lists, has not settled, is not yet held, or (a few, oldest read first) is due to be read again. Without it (null) this is the
+ * full read it always was. A failure of the list still throws (the release lane then refuses to publish); a refused one-event read never replaces a good one held.
+ */
+export async function fetchEvents({ apiBase, fetchImpl = fetch, retries = 3, gate = null, calendar = EMPTY_CALENDAR, snapshot = EMPTY_EVENTS, seed = null, maxPages = PAST_PAGES_MAX, evidenceMax = EVIDENCE_MAX, refreshMax = PAST_REFRESH_MAX } = {}) {
+  const held = seed ? joinHeld(seed, snapshot) : null;
+  const known = held ? new Map(held.past.events.map((e) => [e.id, e])) : null;
+  const past = await fetchPastEvents({ apiBase, fetchImpl, retries, gate, maxPages, known });
+  const unavailable = past.read === "unavailable";
+  const kept = unavailable ? (held ? held.past.events : Array.isArray(snapshot?.past?.events) ? snapshot.past.events : []) : [];
+  const pastEvents = unavailable ? kept : held ? mergePast({ fresh: past.events, held: held.past.events, complete: past.complete }) : past.events;
+  const calendarEvents = GROUP_KEYS.flatMap((k) => (Array.isArray(calendar?.[k]) ? calendar[k] : []));
   const seen = new Set();
-  const all = [...GROUP_KEYS.flatMap((k) => (Array.isArray(calendar?.[k]) ? calendar[k] : [])), ...pastEvents].filter((e) => e && !seen.has(e.id) && seen.add(e.id));
-  const evidence = await fetchEventEvidence({ apiBase, fetchImpl, retries, gate, events: all });
-  const failed = Object.values(evidence).filter((v) => v.read !== "ok").length;
+  const all = [...calendarEvents, ...pastEvents].filter((e) => e && !seen.has(e.id) && seen.add(e.id));
+  const asOf = past.asOf ?? calendar?.as_of ?? null;
+  const next = unavailable ? null : past.stopped ? (held.past.next ?? null) : past.next;
+  const head = { as_of: asOf, past: { events: pastEvents, next, note: past.note, read: past.read } };
+  if (!held) {
+    const evidence = await fetchEventEvidence({ apiBase, fetchImpl, retries, gate, events: all, max: evidenceMax });
+    const failed = Object.values(evidence).filter((v) => v.read !== "ok").length;
+    return {
+      events: { ...head, evidence },
+      gaps: [
+        ...(unavailable ? [EVENTS_GAP] : []),
+        ...(failed ? [`events.json: ${failed} of ${Object.keys(evidence).length} one-event reads were not served, so those events' pages say their evidence couldn't be read`] : []),
+      ],
+    };
+  }
+  const plan = pickEvidenceWork({ events: all, calendarIds: new Set(calendarEvents.map((e) => e?.id)), held: held.evidence, asOfMs: Date.parse(asOf), window: evidenceMax, refreshMax });
+  const asked = await fetchEventEvidence({ apiBase, fetchImpl, retries, gate, events: plan.work, max: Infinity });
+  const merged = mergeEvidence({ events: all, held: held.evidence, fresh: asked, readAt: asOf });
   return {
-    events: {
-      as_of: past.asOf ?? calendar?.as_of ?? null,
-      past: { events: pastEvents, next: past.read === "unavailable" ? null : past.next, note: past.note, read: past.read },
-      evidence,
-    },
+    events: { ...head, evidence: merged.evidence },
     gaps: [
-      ...(past.read === "unavailable" ? [EVENTS_GAP] : []),
-      ...(failed ? [`events.json: ${failed} of ${Object.keys(evidence).length} one-event reads were not served, so those events' pages say their evidence couldn't be read`] : []),
+      `events.json built from the last published file (${held.past.events.length} past events held): the list was read in ${past.pages} page(s)${past.stopped ? `, stopping at the first page whose events it already held and that ended more than ${PAST_SETTLE_MS / 86_400_000} days before the list's own time` : ""}; ${plan.work.length} one-event read(s) asked (${plan.needed} new, changing or not yet held, ${plan.rotated} held reads read again, oldest first) of ${plan.candidates} that could be read`,
+      ...(unavailable ? [EVENTS_GAP] : []),
+      ...(merged.failed ? [`events.json: ${merged.failed} of ${Object.keys(asked).length} one-event reads were not served, so those events' pages say their evidence couldn't be read`] : []),
+      ...(merged.kept ? [`events.json: ${merged.kept} one-event reads were not served and those events keep the good read the last build held (it is read again next build)`] : []),
     ],
   };
 }
