@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildOfficeData, fetchBlueprints, fetchRollcall, fetchCrossings, jsonText, shortFetchPlan } from "./lib/fetch-town-data.mjs";
+import { defaultEventsSeedUrl } from "./lib/past-events-cache.mjs";
 import { worldPin } from "./lib/world-pin-publish.mjs";
 import { readProjectsFromCheckout } from "./lib/town-projects.mjs";
 import { readQuestRegistryFromCheckout } from "./lib/town-quest-registry.mjs";
@@ -42,9 +43,10 @@ const PUBLIC_API = (process.env.POSTMARK_PUBLIC_API || DEFAULT_API).replace(/\/+
 const LETTER_CACHE = process.env.POSTMARK_LETTER_CACHE || null;
 // Where the past calendar is kept between builds (CORE-180, tools/lib/past-events-cache.mjs): the site's own last PUBLISHED events.json. Every pass writes it to
 // public/atelier/postmark/data, so it survives a clean Actions checkout and the box refresh's reset and clean, which the tracked src/data/postmark/events.json does not.
-// It is one static GET, not the office's keyless API; with it a build reads the newest list page and only the one-event reads that are new, changing or due, not the whole
-// lasting list again. Set POSTMARK_EVENTS_SEED_URL to another address, or to the empty string for none (the whole list is read, as before).
-const EVENTS_SEED_URL = process.env.POSTMARK_EVENTS_SEED_URL !== undefined ? (process.env.POSTMARK_EVENTS_SEED_URL || null) : `${TOWN_BASE}/data/events.json`;
+// It is one static GET, not the office's keyless API; with it a build reads the newest list page(s) of the lasting list only until it meets an event it already holds (every
+// event's one-event read is still made every pass). It is the DEFAULT ONLY when this run reads the production API (the default, or POSTMARK_API / --api naming the same
+// address): a build of another office is never seeded with production's events. Set POSTMARK_EVENTS_SEED_URL to opt another build in, or to the empty string for none.
+const EVENTS_SEED_URL = defaultEventsSeedUrl({ env: process.env, api: API, defaultApi: DEFAULT_API, townBase: TOWN_BASE });
 const TOWN_ARG = arg("--town", null);
 const TOWN = TOWN_ARG ? resolve(TOWN_ARG) : null;
 if (TOWN) refuseLinkedCheckout(TOWN);

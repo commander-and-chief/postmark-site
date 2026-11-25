@@ -7,7 +7,6 @@ import test from "node:test";
 
 import { apiGet, buildOfficeData, CALENDAR_GAP, LEDGER_GAP, DOCS_GAP, createRateGate, EMPTY_CALENDAR, DEFAULT_FETCH_TOWN_DEADLINE_MS, fetchResidentRoll, fetchTownDeadlineMs, jsonText, mapLimit, MAX_NAMED_404S, RESIDENT_CARD_LANES, shortFetchPlan } from "../tools/lib/fetch-town-data.mjs";
 import { readFileSync } from "node:fs";
-import { PAST_REFRESH_MAX } from "../tools/lib/past-events-cache.mjs";
 
 function writeJson(dir, name, value) {
   mkdirSync(dir, { recursive: true });
@@ -246,7 +245,8 @@ test("buildOfficeData builds the past calendar from the published events.json: o
   const read = (n) => ({ id: `h/e${n}`, evidence: { rooms: [], room_history: "complete", present: [], gallery: { rooms: [], sparks: [] }, complete: true } });
   const published = { as_of: NOW, past: { events, next: null, note: null, read: "office" }, evidence: Object.fromEntries(events.map((e, i) => [e.id, { read: "ok", event: read(i) }])) };
   const ok = (body) => ({ ok: true, status: 200, statusText: "OK", headers: { get: () => null }, json: async () => JSON.parse(JSON.stringify(body)) });
-  const withEvents = (seedAnswer) => {
+  // `refuseDeep`: every list page after the first answers 429, as the second page did in run 45484503414; `gone`: ids whose one-event read answers 404
+  const withEvents = (seedAnswer, { refuseDeep = false, gone = [] } = {}) => {
     const base = fixtureFetch();
     const asked = [];
     const fetchImpl = async (url, init) => {
@@ -255,12 +255,13 @@ test("buildOfficeData builds the past calendar from the published events.json: o
       if (u.pathname === "/town/apex" && u.searchParams.get("read") === "calendar") {
         asked.push("list");
         const before = JSON.parse(u.searchParams.get("args")).before;
+        if (refuseDeep && before) return { ok: false, status: 429, statusText: "Too Many Requests", headers: { get: () => null }, json: async () => ({}) };
         const i = before ? events.findIndex((e) => e.ends === before) + 1 : 0;      // 2 a page
         const page = events.slice(i, i + 2);
         return ok({ as_of: NOW, past: page, next: i + 2 < events.length ? { past: true, before: page.at(-1).ends } : null, note: null });
       }
       const m = /^\/calendar\/h\/(e\d+)$/.exec(u.pathname);
-      if (m) { asked.push(`read ${m[1]}`); return ok({ event: read(Number(m[1].slice(1))) }); }
+      if (m) { asked.push(`read ${m[1]}`); return gone.includes(`h/${m[1]}`) ? { ok: false, status: 404, statusText: "Not Found", headers: { get: () => null }, json: async () => ({}) } : ok({ event: read(Number(m[1].slice(1))) }); }
       return base(url, init);
     };
     return { fetchImpl, asked };
@@ -276,15 +277,26 @@ test("buildOfficeData builds the past calendar from the published events.json: o
   assert.equal(c.files["events.json"].past.events.length, 14);
 
   // warm: the tracked file is the empty committed one (fixtureSnapshot has no events.json), the seed is the published file
-  const warm = withEvents(() => ok(published));
+  // (and its second list page answers 429, as in the real run: a build that asked it would fail)
+  const warm = withEvents(() => ok(published), { refuseDeep: true });
   const w = await build(warm, "https://seed.invalid/data/events.json");
   assert.equal(warm.asked.filter((a) => a === "seed").length, 1, "one static GET");
-  assert.equal(warm.asked.filter((a) => a === "list").length, 2, "page 1 holds the unsettled e0; page 2 is all held and settled: stop");
+  assert.equal(warm.asked.filter((a) => a === "list").length, 1, "page 1 ends at e1, which is held: stop, and the second page (429) is never asked");
+  assert.ok(warm.asked.indexOf("seed") < warm.asked.indexOf("list"), "the seed is read before the list");
   const reads = warm.asked.filter((a) => a.startsWith("read"));
-  assert.equal(reads.length, 1 + PAST_REFRESH_MAX, `the unsettled event plus the rotation, not all 14: ${JSON.stringify(reads)}`);
-  assert.ok(reads.includes("read e0"));
+  assert.equal(reads.length, 14, "every wanted event is still asked, as on main");
   assert.equal(JSON.stringify(w.files["events.json"].past.events), JSON.stringify(c.files["events.json"].past.events), "the same published list");
   assert.match(w.endpointGaps.join("\n"), /events\.json built from the last published file \(14 past events held\)/);
+  // cold, that same 429 fails the build (a 1 ms run budget: the gate keeps asking a refused call until the budget is spent, which is 180 s in production)
+  const impatient = createRateGate({ budgetMs: 1, minParkMs: 1, maxParkMs: 1, sleep: async () => {} });
+  const coldRefused = withEvents(() => { throw new Error("no seed is named"); }, { refuseDeep: true });
+  await assert.rejects(() => { const { data, town } = fixtureSnapshot(); return buildOfficeData({ apiBase: "https://example.test", dataDir: data, townRoot: town, fetchImpl: coldRefused.fetchImpl, gate: impatient }); }, /budget is spent|429|refused/, "cold, that same 429 fails the build");
+  // a held event the office has stopped serving (not returned by page 1, its read answers 404) leaves with its evidence
+  const withdrawn = withEvents(() => ok(published), { refuseDeep: true, gone: ["h/e13"] });
+  const wd = await build(withdrawn, "https://seed.invalid/data/events.json");
+  assert.equal(wd.files["events.json"].past.events.some((e) => e.id === "h/e13"), false);
+  assert.equal(wd.files["events.json"].evidence["h/e13"], undefined);
+  assert.equal(wd.files["events.json"].past.events.length, 13);
 
   // an unreadable seed is said, and the whole list is read: never a stale stand-in
   for (const answer of [() => ({ ok: false, status: 503, statusText: "503", headers: { get: () => null }, json: async () => ({}) }), () => ok({ not: "events" })]) {
