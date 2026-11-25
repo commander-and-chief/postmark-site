@@ -13,12 +13,13 @@
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
-import { buildOfficeData, fetchLettersSince, fetchLetterCorpus, jsonText, readLetterCache } from "../tools/lib/fetch-town-data.mjs";
+import { buildOfficeData, fetchLettersSince, fetchLetterCorpus, jsonText, readLetterCache, shortFetchPlan } from "../tools/lib/fetch-town-data.mjs";
+import { readLettersSeed } from "../tools/lib/letters-seed.mjs";
 import { readDoorsteps } from "../tools/lib/doorstep-reads.mjs";
 
 const letter = (id, from, to, date, body, box = "inbox") => ({
@@ -337,16 +338,70 @@ test("LETTERS, A SEED THAT CANNOT BE TRUSTED IS NO SEED: absent, refused, corrup
   assert.equal(jsonText(behind.files["letters.json"]), jsonText(big));
 });
 
-test("LETTERS: no stale publication on failure, and no seed where there is a cache or no opt-in", async () => {
+const REFUSED = /refusing to publish a corpus built from the resident cards/;
+/** an office whose letters door fails in a named way: the request that matches `when` throws; everything else is `o` */
+const breaking = (o, when, seedAnswer) => ({ requests: o.requests, fetchImpl: async (url, init) => { if (String(url).startsWith("https://seed.invalid")) { o.requests.push("seed"); return seedAnswer(); } if (when(String(url))) return served({ error: "socket hang up" }, 500); return o.fetchImpl(url, init); } });
+
+test("LETTERS, A GOOD SEED IN HAND IS NEVER REPLACED BY A CARD-BUILT CORPUS: any letters-door failure, a mixed or a no-corpus answer FAILS THE PASS; every other mode is as it was", async () => {
   const t = town();
   const seed = await publishedOf(t);
   t.letters.set("late", letter("late", "r22", "r23", "2026-09-01", "merged late"));
-  // the ids read fails: the build does not publish the seed's letters as if they were current (the bulk door did not answer, the existing fallback speaks), and says so
-  const o = office(t, { refuseIds: false });
-  const failing = { requests: o.requests, fetchImpl: async (url, init) => { if (String(url).includes("ids=")) throw new Error("socket hang up"); if (String(url).startsWith("https://seed.invalid")) return served(seed); return o.fetchImpl(url, init); } };
-  const r = await build(failing, { lettersSeedUrl: SEED_URL, retries: 1 });
-  assert.match(r.problems.join("\n"), /letters: the bulk door did not answer \(.*socket hang up.*\); built from the resident cards instead/);
-  assert.notEqual(jsonText(r.files["letters.json"]), jsonText(seed), "the seed's letters were not published in its place");
+  const down = { lettersSeedUrl: SEED_URL, retries: 1 };
+  // a GOOD seed, and the ids read fails / the inventory read fails
+  await assert.rejects(build(breaking(office(t), (u) => u.includes("ids="), () => served(seed)), down), REFUSED, "good seed, ids read throws");
+  await assert.rejects(build(breaking(office(t), (u) => u.includes("digests=1"), () => served(seed)), down), REFUSED, "good seed, inventory read throws");
+  // an older office (no bodies: no door), a MIXED first page: no complete corpus
+  const older = office(t, { bulk: false });                                       // an office that answers excerpts: no `body` key on any letters row
+  const olderImpl = older.fetchImpl;
+  older.fetchImpl = async (url, init) => { const res = await olderImpl(url, init); if (new URL(url).pathname !== "/letters") return res; const b = await res.json(); return served({ ...b, letters: b.letters.map(({ body, ...rest }) => rest) }); };
+  await assert.rejects(build(withSeed(older, () => served(seed)), down), REFUSED, "an office with no bulk door carries no complete corpus");
+  const mixedFirst = office(t, { bulk: false });                                  // no inventory door, so the whole-corpus fallback is what answers: and its first page is mixed
+  const mixedImpl = mixedFirst.fetchImpl;
+  mixedFirst.fetchImpl = async (url, init) => { const res = await mixedImpl(url, init); if (String(url).includes("/letters?full=1&limit=200&offset=0")) { const b = await res.json(); b.letters[0] = (({ body, ...rest }) => rest)(b.letters[0]); return served(b); } return res; };
+  await assert.rejects(build(withSeed(mixedFirst, () => served(seed)), down), REFUSED, "good seed, then the whole-corpus fallback answers a mixed first page");
+  // EVERY OTHER MODE IS AS IT WAS (Wright's narrower scope): a cold pass (no published file yet) and an unreadable seed keep the existing card fallback and its problem line, no refusal
+  for (const [name, answer] of [["none", () => served({}, 404)], ["unreadable", () => served({}, 503)]]) {
+    const r = await build(breaking(office(t), (u) => u.startsWith(`${OFFICE}/letters?full=1`), answer), down);
+    assert.match(r.problems.join("\n"), /letters: the bulk door did not answer \(.*\); built from the resident cards instead/, `${name}: unchanged`);
+  }
+  // and the CLI's own door: the throw is what fetch-town.mjs catches, and what shortFetchPlan turns into a release-lane refusal (exit 1, nothing written: files are written only after buildOfficeData returns)
+  assert.equal(shortFetchPlan({ channel: "release" }).exitCode, 1);
+  const entry = readFileSync(new URL("../tools/fetch-town.mjs", import.meta.url), "utf8");
+  assert.ok(entry.indexOf("await buildOfficeData(") < entry.indexOf("Object.entries(result.files)"), "the files are written only after the build returned");
+  assert.match(entry, /const plan = shortFetchPlan\(\{ channel: process\.env\.PUBLIC_CHANNEL \?\? null \}\);\n  console\.warn\(plan\.line\);\n  process\.exit\(plan\.exitCode\);/);
+});
+
+test("LETTERS, THE FAILED PASS DOES NOT POISON THE NEXT: the last good seed stays, the next pass reads over it and keeps the complete bodies; a legacy caller keeps its card fallback", async () => {
+  const t = town();
+  // the cards carry accepted box:inbox rows with EMPTY bodies (the bounded excerpts): exactly what a card-built corpus would publish, and what a seed check accepts
+  for (const [h, id] of [["r01", "l0"], ["r02", "l1"]]) t.cards.set(h, { ...t.cards.get(h), inbox: [{ id, from: "r00", to: h, toList: [h], date: "2026-10-01", thread: null, body: "", box: "inbox", attachments: [], path: `WHITE_PAGES/${h}/inbox/${id}.md` }] });
+  const seed = await publishedOf(t);                                                   // pass 1: good, complete bodies, published
+  assert.equal(seed.find((l) => l.id === "l0").body, "letter 0 body");
+  const down = { lettersSeedUrl: SEED_URL, retries: 1 };
+  // pass 2: the door fails with the seed feature enabled: the pass fails, nothing is returned to publish, the published file (the seed) is untouched
+  await assert.rejects(build(breaking(office(t), (u) => u.includes("ids=") || u.includes("digests=1"), () => served(seed)), down), REFUSED);
+  // what a card-built corpus would have been: a legal-looking seed of excerpts that would hold its inbox rows for good
+  const excerpts = (await build(breaking(office(t), (u) => u.includes("/letters"), () => served(seed)), { retries: 1 })).files["letters.json"];   // legacy caller, the door fails: the cards
+  assert.ok(excerpts.every((l) => l.box === "inbox" && l.body === ""), "the card route's rows: box inbox, empty body");
+  assert.equal((await readLettersSeed({ url: SEED_URL, fetchImpl: async () => served(excerpts) })).state, "ok", "which the seed check accepts: that is why the pass must fail instead");
+  // pass 3: the office recovers; the next pass reads over the LAST GOOD seed and keeps the complete bodies
+  const o = office(t);
+  const next = await build(withSeed(o, () => served(seed)), down);
+  assert.equal(next.files["letters.json"].find((l) => l.id === "l0").body, "letter 0 body", "complete body preserved");
+  assert.deepEqual(lettersAsked(o), ["/letters?digests=1&limit=5000&offset=0"]);
+  // a LEGACY caller (the seed feature off): the card fallback is exactly what it always was, problems said, no refusal
+  const legacy = await build(breaking(office(t), (u) => new URL(u).pathname === "/letters", () => served(seed)), { retries: 1 });
+  assert.match(legacy.problems.join("\n"), /letters: the bulk door did not answer \(.*\); built from the resident cards instead/);
+  assert.equal(legacy.files["letters.json"].length, 2);
+  // and a COMPLETE corpus from a supported fallback still builds with the feature enabled (an unreadable seed: the whole corpus)
+  const full = office(t);
+  const ok = await build(withSeed(full, () => served({}, 503)), down);
+  assert.equal(ok.files["letters.json"].length, 12);
+});
+
+test("LETTERS: no seed where there is no opt-in; a letter cache without the feature is the legacy cache path", async () => {
+  const t = town();
+  const seed = await publishedOf(t);
   // a letter cache wins over a seed: the seed is not even asked
   const { root } = snapshot();
   const c = office(t);

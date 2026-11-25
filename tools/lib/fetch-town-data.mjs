@@ -923,6 +923,14 @@ export async function buildOfficeData({
   let corpus = null;
   // THE LAST PUBLISHED letters.json (CORE-180), one static GET, only where there is no letter cache. Absent (a first build) or unreadable, the whole corpus is read as ever, said.
   const lettersSeed = !letterCachePath && lettersSeedUrl ? await readLettersSeed({ url: lettersSeedUrl, fetchImpl }) : { state: "unset" };
+  // A GOOD SEED IN HAND IS NEVER REPLACED BY A CARD-BUILT CORPUS (CORE-180, review F1; Wright, 2026-11-25 14:17Z chose this option). The resident cards carry the office's bounded
+  // excerpts; mapLetter turns every one into a row with an id and a body key, which the seed check accepts, and every such row that says `box: "inbox"` would be held as published and
+  // never read again: an excerpt made permanent. So when the published letters.json was read and trusted (state "ok"), a letters door that fails, answers a mixed or partial
+  // corpus, or carries no complete corpus FAILS THE PASS: fetch-town.mjs's catch and the release channel's short-fetch refusal then publish nothing, and the last good release, and
+  // with it the last good seed, keeps serving. Every other mode (no seed feature, a cold or unreadable seed, a letter cache) and the success path are exactly as they were.
+  const refuseCardsAsSeed = (why) => {
+    if (lettersSeed.state === "ok") throw new Error(`letters: ${why}; refusing to publish a corpus built from the resident cards over the last published letters.json, whose excerpts the next build would take as its seed (the last published file stays)`);
+  };
   if (lettersSeed.state === "unreadable") endpointGaps.push(`letters.json: the last published file (${lettersSeedUrl}) could not be read (${lettersSeed.reason}), so the whole letter corpus is read this build`);
   if (lettersSeed.state === "none") endpointGaps.push(`letters.json: no published file at ${lettersSeedUrl} yet (a first build), so the whole letter corpus is read this build`);
   try {
@@ -935,12 +943,15 @@ export async function buildOfficeData({
     // A door that errors is a door that is not there, for our purposes. The
     // fallback is the known-good route and the build goes on; the reason is
     // recorded rather than swallowed.
+    refuseCardsAsSeed(`the bulk door did not answer (${error?.message ?? error})`);
     problems.push(`letters: the bulk door did not answer (${error?.message ?? error}); built from the resident cards instead`);
   }
   if (corpus?.mixed) {
+    refuseCardsAsSeed(`the bulk door answered ${corpus.withBody} of ${corpus.of} rows with bodies, a partial corpus`);
     problems.push(`letters: the bulk door answered ${corpus.withBody} of ${corpus.of} rows with bodies — a partial answer cannot build a complete corpus, so the resident cards were used instead`);
     corpus = null;
   }
+  if (!corpus) refuseCardsAsSeed("the bulk door carried no complete corpus (no bodies, or nothing to read)");
   if (corpus) {
     letters = corpus.letters;
     endpointGaps.push(corpus.since?.published
