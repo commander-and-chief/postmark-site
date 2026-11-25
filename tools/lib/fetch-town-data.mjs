@@ -6,6 +6,7 @@ import { join, dirname } from "node:path";
 import { buildThreads, normalizeProfile, parseFrontmatter, readResidentProfiles } from "./town.mjs";
 import { publicRegistry } from "./public-registry.mjs";
 import { EVENT_WITHDRAWN_STATUSES, joinHeld, mergeEvidence, mergePast, overlapsHeld, readEventsSeed } from "./past-events-cache.mjs";
+import { readLettersSeed } from "./letters-seed.mjs";
 
 export const RESIDENT_CARD_LANES = 6;
 
@@ -496,6 +497,21 @@ export async function fetchLettersSince({ apiBase, fetchImpl, retries, gate = nu
   // Read whole when the moved letters would cost more reads than the corpus.
   if (Math.ceil(want.length / LETTER_IDS_PER_READ) > Math.ceil(digests.length / 200)) return whole();
 
+  const fresh = await readLetterRowsByIds({ apiBase, fetchImpl, retries, gate, ids: want });
+  if (!fresh) return whole();
+  // A letter named in the digests and gone from the ids answer left the town
+  // between the two reads; it leaves the corpus with it.
+  const moved = new Set(want);
+  const rows = digests.map((d) => fresh.get(d.id) ?? (moved.has(d.id) ? null : known[d.id].row)).filter(Boolean);
+  writeLetterCache(cachePath, rows, digestOf);
+  return { letters: dedupeLetters(rows.map(mapLetter)), rows, since: { fetched: fresh.size } };
+}
+
+/**
+ * The whole rows of the letters named, `/letters?full=1&ids=`, a hundred to a read: a Map by id, or null when the answer is not this door's (the ids refused with a 400, or a
+ * row that was not asked for or carries no body), so the caller reads the whole corpus instead. Any other failure throws, as every read here does.
+ */
+async function readLetterRowsByIds({ apiBase, fetchImpl, retries, gate, ids: want }) {
   const fresh = new Map();
   for (let i = 0; i < want.length; i += LETTER_IDS_PER_READ) {
     const ids = want.slice(i, i + LETTER_IDS_PER_READ);
@@ -503,21 +519,48 @@ export async function fetchLettersSince({ apiBase, fetchImpl, retries, gate = nu
     try {
       ({ body } = await apiGet(`/letters?full=1&limit=${LETTER_IDS_PER_READ}&ids=${ids.map(encodeURIComponent).join(",")}`, { apiBase, fetchImpl, retries, gate }));
     } catch (error) {
-      if (error?.status === 400) return whole(); // the ids refused
+      if (error?.status === 400) return null; // the ids refused
       throw error;
     }
     const batch = ensureArray(body?.letters, "/letters.letters");
     // Exactly the rows asked for, whole, or the answer is not this door's.
     const asked = new Set(ids);
-    if (batch.some((l) => !asked.has(l.id) || !Object.hasOwn(l, "body"))) return whole();
+    if (batch.some((l) => !asked.has(l.id) || !Object.hasOwn(l, "body"))) return null;
     for (const l of batch) fresh.set(l.id, l);
   }
-  // A letter named in the digests and gone from the ids answer left the town
-  // between the two reads; it leaves the corpus with it.
+  return fresh;
+}
+
+// ── THE LETTERS SINCE THE LAST PUBLISHED SNAPSHOT (CORE-180) ────────────────
+//
+// The release lane on Actions has no letter cache (the cache above is a file beside the box's run, and a clean checkout has none), so it read the whole corpus every build: 118 of
+// the 182 office requests in the counted pass at cf319245, bulk-priced, which spent the keyless burst within five requests. Wright, 2026-11-25: "A delivered letter never changes
+// either. So fetch letters incrementally, keeping what the last snapshot has and fetching only letters newer than it, with no key and no higher limit."
+//
+// THE SEED is the site's own last PUBLISHED letters.json (`<town base>/data/letters.json`): what this function itself returns (dedupeLetters over mapLetter), written by every
+// publishing pass, so it survives a clean checkout and the box's reset, and reading it is one static GET outside the office's limit zones. It carries no digest and no raw row, and
+// none is published for it: change is not read from a digest but from the letter's own state.
+//   - THE INVENTORY is the office's own `/letters?digests=1` (every letter's id, paged), the supported inventory the since-cache above reads. It is read EVERY pass, so a letter new
+//     to the snapshot is found by its id whatever its authored date (a backdated or tied letter is not "older"), and a held letter the inventory no longer names is WITHDRAWN: it
+//     leaves the corpus.
+//   - HELD AND DELIVERED stands as published: a letter in the snapshot whose box is `inbox` (delivered) is kept as it is and not read again.
+//   - READ WHOLE (`/letters?full=1&ids=`): every inventory id the snapshot does not hold, and every held letter that is not yet delivered (the ferry MOVES a letter outbox -> inbox at
+//     delivery: its path and box change), so a letter in transit is always read as the office has it now.
+// THE WHOLE READ STAYS THE FALLBACK: an office with no inventory door, an ids read it refuses, a row that is not the one asked for, or more letters to read than the whole corpus
+// would cost (an incomplete or foreign seed). A failed read throws, as every read here does. Nothing is invented: a seed is only the letters this office already served us.
+export async function fetchLettersFromPublished({ apiBase, fetchImpl, retries, gate = null, seed }) {
+  const digests = await fetchLetterDigests({ apiBase, fetchImpl, retries, gate });
+  const whole = () => fetchLetterCorpus({ apiBase, fetchImpl, retries, gate });
+  if (!digests) return whole();
+  const held = new Map(seed.map((l) => [l.id, l]));
+  const want = digests.filter((d) => held.get(d.id)?.box !== "inbox").map((d) => d.id);
+  if (Math.ceil(want.length / LETTER_IDS_PER_READ) > Math.ceil(digests.length / 200)) return whole();
+  const fresh = await readLetterRowsByIds({ apiBase, fetchImpl, retries, gate, ids: want });
+  if (!fresh) return whole();
+  // named in the inventory and gone from the ids answer: it left the town between the two reads; held and in transit and gone likewise
   const moved = new Set(want);
-  const rows = digests.map((d) => fresh.get(d.id) ?? (moved.has(d.id) ? null : known[d.id].row)).filter(Boolean);
-  writeLetterCache(cachePath, rows, digestOf);
-  return { letters: dedupeLetters(rows.map(mapLetter)), rows, since: { fetched: fresh.size } };
+  const letters = digests.map((d) => (fresh.has(d.id) ? mapLetter(fresh.get(d.id)) : moved.has(d.id) ? null : held.get(d.id))).filter(Boolean);
+  return { letters: dedupeLetters(letters), since: { fetched: fresh.size, held: letters.length - fresh.size, published: true } };
 }
 
 /**
@@ -789,6 +832,9 @@ export async function buildOfficeData({
   // Where the last PUBLISHED events.json is read from, `<town base>/data/events.json` (tools/lib/past-events-cache.mjs): the held state the past calendar is built
   // incrementally over (CORE-180). Null reads the whole lasting list and every one-event read, as every run without a seed always has.
   eventsSeedUrl = null,
+  // Where the last PUBLISHED letters.json is read from, `<town base>/data/letters.json` (tools/lib/letters-seed.mjs): the held state the letter corpus is read incrementally
+  // over when there is no letter cache (CORE-180). Null (or a letter cache) reads as before.
+  lettersSeedUrl = null,
 } = {}) {
   const readSnapshot = snapshotReader(dataDir);
   const endpointGaps = [];
@@ -875,10 +921,16 @@ export async function buildOfficeData({
   // a byte count nobody is watching.
   let letters;
   let corpus = null;
+  // THE LAST PUBLISHED letters.json (CORE-180), one static GET, only where there is no letter cache. Absent (a first build) or unreadable, the whole corpus is read as ever, said.
+  const lettersSeed = !letterCachePath && lettersSeedUrl ? await readLettersSeed({ url: lettersSeedUrl, fetchImpl }) : { state: "unset" };
+  if (lettersSeed.state === "unreadable") endpointGaps.push(`letters.json: the last published file (${lettersSeedUrl}) could not be read (${lettersSeed.reason}), so the whole letter corpus is read this build`);
+  if (lettersSeed.state === "none") endpointGaps.push(`letters.json: no published file at ${lettersSeedUrl} yet (a first build), so the whole letter corpus is read this build`);
   try {
     corpus = letterCachePath
       ? await fetchLettersSince({ apiBase, fetchImpl, retries, gate, cachePath: letterCachePath })
-      : await fetchLetterCorpus({ apiBase, fetchImpl, retries, gate });
+      : lettersSeed.state === "ok"
+        ? await fetchLettersFromPublished({ apiBase, fetchImpl, retries, gate, seed: lettersSeed.letters })
+        : await fetchLetterCorpus({ apiBase, fetchImpl, retries, gate });
   } catch (error) {
     // A door that errors is a door that is not there, for our purposes. The
     // fallback is the known-good route and the build goes on; the reason is
@@ -891,7 +943,9 @@ export async function buildOfficeData({
   }
   if (corpus) {
     letters = corpus.letters;
-    endpointGaps.push(corpus.since
+    endpointGaps.push(corpus.since?.published
+      ? `letters.json built from the last published file and the office's inventory (/letters?digests=1): ${letters.length} letters, ${corpus.since.held} held as published, ${corpus.since.fetched} read whole (/letters?full=1&ids=)`
+      : corpus.since
       ? `letters.json built from the last pass's letters and the office's digests (/letters?digests=1): ${letters.length} letters, ${corpus.since.fetched} read whole (/letters?full=1&ids=)`
       : `letters.json built from the office's bulk letter door (/letters?full=1): ${letters.length} letters`);
   } else {
@@ -1328,7 +1382,7 @@ export async function fetchEvents({ apiBase, fetchImpl = fetch, retries = 3, gat
   const heldOnly = [...refused].filter((id) => !served.has(id) && known.has(id));
   const withdrawn = new Set(!unavailable && answering ? heldOnly : []);
   const published = pastEvents.filter((e) => !withdrawn.has(e?.id));
-  const merged = mergeEvidence({ events: all.filter((e) => !withdrawn.has(e?.id)), held: held.evidence, fresh: asked, refused });
+  const merged = mergeEvidence({ events: all.filter((e) => !withdrawn.has(e?.id)), fresh: asked });
   return {
     events: { as_of: asOf, past: { events: published, next, note: past.note, read: past.read }, evidence: merged.evidence },
     gaps: [
@@ -1337,7 +1391,6 @@ export async function fetchEvents({ apiBase, fetchImpl = fetch, retries = 3, gat
       ...(withdrawn.size ? [`events.json: ${withdrawn.size} held past event(s) the office no longer serves (the list did not return them and their one-event read was refused as not found or gone) left the cache with their evidence: ${[...withdrawn].slice(0, 12).join(", ")}${withdrawn.size > 12 ? ", …" : ""}`] : []),
       ...(heldOnly.length && !withdrawn.size ? [`events.json: ${heldOnly.length} held past event(s) had their one-event read refused as not found or gone, but no read was answered this build or the list was not served, so none was taken down`] : []),
       ...(merged.failed ? [`events.json: ${merged.failed} of ${Object.keys(asked).length} one-event reads were not served, so those events' pages say their evidence couldn't be read`] : []),
-      ...(merged.kept ? [`events.json: ${merged.kept} one-event reads were not served and those events keep the good read the last build held (a failed read is not an answer; it is asked again next build)`] : []),
     ],
   };
 }

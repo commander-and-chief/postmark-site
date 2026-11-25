@@ -14,7 +14,7 @@
 //   - ROWS: the list is followed newest-first and STOPS at the first page whose OLDEST event the build already holds (same id, same end): everything older is the held list's.
 //     A stop keeps the held events older than that page, in order, and the held list's own cursor; nothing is dropped for being beyond a page the build did not need.
 //   - EVIDENCE is NOT cached: every wanted event's one-event read is made every pass, exactly as before (changeable evidence, public-human presentation included, is as fresh
-//     as it ever was). The held read is only a fallback when this pass's read FAILED TRANSIENTLY (429, 5xx, offline, a spent budget): the last good read stands, said in a gap.
+//     as it ever was). A read that fails, for any reason, is `unavailable` as on main: a held read is NEVER republished under this pass's time. Held ROWS are the cache.
 //   - WITHDRAWAL: an event the build holds but the list no longer served this pass, whose one-event read the office DEFINITIVELY refused (404, 410), leaves the cache, row and
 //     evidence, when the office is answering other reads this pass. A transient failure is never a withdrawal, and an event the list or the calendar served this pass is served.
 //   - A failed list page still throws (the release lane then refuses to publish); a seed that is absent, refused, corrupt or not the events shape is no seed (the build reads
@@ -33,8 +33,6 @@ export const isEventsShape = (v) => isObj(v) && isObj(v.past) && Array.isArray(v
 
 /** An event the build may ask the one-event read for: its doors have been open (not announced), it is not cancelled, and it has a <host>/<slug> id. */
 export const wantsEvidence = (e) => !!e && typeof e.id === "string" && ID.test(e.id) && e.phase !== "announced" && !e.cancelled;
-
-const heldOk = (held, id) => held?.[id]?.read === "ok" && isObj(held[id].event);
 
 /**
  * Where the past calendar's seed is read from: an explicit POSTMARK_EVENTS_SEED_URL wins (the empty string is none); otherwise the site's own published file, and ONLY when the
@@ -104,22 +102,20 @@ export function mergePast({ fresh = [], held = [], complete = false } = {}) {
 /**
  * The evidence map for the next events.json, over the events being published (`events`), after EVERY wanted event was asked (`fresh`, from fetchEventEvidence).
  *   answered ok                the fresh read, whole
- *   failed transiently, a good read held   the held read stands (counted `kept`): a failed read is not an answer, and not an empty one
- *   refused as not found or gone (`refused`), or failed with none held   `{ read: "unavailable" }` (counted `failed`), as before: a refusal is the office's answer, and the held
- *                              read is not put back over it (an event the list still serves, whose read the office refuses, says so, as on main)
+ *   failed, for ANY reason    `{ read: "unavailable" }` (counted `failed`), exactly as on main: a 429, a 5xx, a timeout, a spent budget or a refusal. A held read is NEVER put back under this
+ *                              pass's time (Wright, 2026-11-25: evidence stays as fresh as main's; a failed read says "couldn't be read", not an older answer, and not for ever)
  *   not asked                  no entry (the page reads that as never asked), as before
- * Nothing is edited.
+ * Held ROWS are the cache; held evidence is not. Nothing is edited.
  */
-export function mergeEvidence({ events = [], held = {}, fresh = {}, refused = new Set() } = {}) {
+export function mergeEvidence({ events = [], fresh = {} } = {}) {
   const out = {};
-  let refreshed = 0, kept = 0, failed = 0;
+  let refreshed = 0, failed = 0;
   for (const e of events) {
     if (!wantsEvidence(e)) continue;
     const got = fresh[e.id];
     if (!got) continue;
     if (got.read === "ok") { out[e.id] = got; refreshed++; }
-    else if (heldOk(held, e.id) && !refused.has(e.id)) { out[e.id] = held[e.id]; kept++; }
     else { out[e.id] = { read: "unavailable" }; failed++; }
   }
-  return { evidence: out, refreshed, kept, failed };
+  return { evidence: out, refreshed, failed };
 }

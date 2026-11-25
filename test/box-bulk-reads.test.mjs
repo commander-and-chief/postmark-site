@@ -230,3 +230,146 @@ test("doorsteps: 25 a request where the office has the bulk read, one by one whe
   assert.notEqual(c.doorsteps.get("r24").fetchedAt, c.doorsteps.get("r25").fetchedAt);
   assert.equal(tick, 2);
 });
+
+// ── THE LETTERS SINCE THE LAST PUBLISHED SNAPSHOT (CORE-180) ────────────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// The release lane on Actions has no letter cache and a clean checkout has no letters, so it read the whole corpus every build (118 of the 182 office requests in the counted pass at
+// cf319245). The held state is the site's own last PUBLISHED letters.json, read as one static GET; the office's inventory (/letters?digests=1) is read every pass, and only letters the
+// snapshot does not hold, or that are still in transit (not yet in the inbox), are read whole. These run the real buildOfficeData (the consumer) over this file's office, which counts
+// every request, and a seed served from a stubbed address; the live office and the live site are never read.
+const SEED_URL = "https://seed.invalid/data/letters.json";
+const OFFICE = "https://office.test";
+const withSeed = (o, answer) => ({ requests: o.requests, fetchImpl: async (url, init) => { if (String(url).startsWith("https://seed.invalid")) { o.requests.push("seed"); return answer(); } return o.fetchImpl(url, init); } });
+const served = (body, status = 200) => ({ ok: status === 200, status, statusText: String(status), headers: { get: () => null }, json: async () => JSON.parse(JSON.stringify(body)) });
+const build = (h, extra = {}) => buildOfficeData({ apiBase: OFFICE, dataDir: snapshot().data, fetchImpl: h.fetchImpl, ...extra });
+const lettersAsked = (o) => o.requests.filter((r) => r.startsWith("/letters"));
+const publishedOf = async (t) => (await build(office(t))).files["letters.json"];             // what a build wrote and was published
+
+test("LETTERS, SEEDED WARM: nothing moved is the inventory and nothing else; the file is the cold build's, byte for byte; no raw or private field is added", async () => {
+  const t = town();
+  const seed = await publishedOf(t);
+  const cold = await build(office(t));
+  const o = office(t);
+  const warm = await build(withSeed(o, () => served(seed)), { lettersSeedUrl: SEED_URL });
+  assert.deepEqual(lettersAsked(o), ["/letters?digests=1&limit=5000&offset=0"], "the office's inventory only: no full page, no ids read");
+  assert.equal(o.requests.filter((r) => r === "seed").length, 1, "one static GET");
+  assert.equal(jsonText(warm.files["letters.json"]), jsonText(cold.files["letters.json"]), "the same published corpus");
+  assert.deepEqual(Object.keys(warm.files["letters.json"][0]).sort(), ["attachments", "body", "box", "date", "from", "id", "path", "thread", "to", "toList"], "mapLetter's projection, nothing added (no digest, no row, no delivered_at)");
+  assert.match(warm.endpointGaps.join("\n"), /letters\.json built from the last published file and the office's inventory \(\/letters\?digests=1\): 12 letters, 12 held as published, 0 read whole/);
+  // COLD, no seed named: the whole corpus, as every build without one always has
+  const c = office(t);
+  await build(c);
+  assert.ok(lettersAsked(c).some((r) => r.startsWith("/letters?full=1&limit=200&offset=0")));
+  assert.equal(c.requests.includes("seed"), false);
+});
+
+test("LETTERS, NEW DELIVERIES: a letter new to the snapshot is found by its id whatever its authored date (backdated, tied), a letter in transit is read as it is now, a withdrawn one leaves", async () => {
+  const t = town();
+  t.letters.set("transit", letter("transit", "r20", "r21", "2026-10-05", "not yet delivered", "outbox"));
+  const seed = await publishedOf(t);
+  // the ferry delivers it, a backdated letter and one TIED with l5's date are merged late, and l9 leaves the town
+  t.letters.set("transit", letter("transit", "r20", "r21", "2026-10-05", "not yet delivered", "inbox"));
+  t.letters.set("late", letter("late", "r22", "r23", "2026-09-01", "merged late, backdated"));
+  t.letters.set("tie", letter("tie", "r24", "r25", t.letters.get("l5").date, "same date as l5"));
+  t.letters.delete("l9");
+  const o = office(t);
+  const warm = await build(withSeed(o, () => served(seed)), { lettersSeedUrl: SEED_URL });
+  const cold = await build(office(t));
+  assert.equal(jsonText(warm.files["letters.json"]), jsonText(cold.files["letters.json"]), "the corpus is the whole read's corpus: complete, deduplicated, ordered");
+  const ids = lettersAsked(o).filter((r) => r.includes("ids=")).map((r) => new URL(`https://x${r}`).searchParams.get("ids").split(",")).flat().sort();
+  assert.deepEqual(ids, ["late", "tie", "transit"], "only what the snapshot did not hold or still had in transit");
+  assert.equal(lettersAsked(o).length, 2, "one inventory read, one ids read");
+  assert.equal(warm.files["letters.json"].find((l) => l.id === "transit").box, "inbox", "delivered now");
+  assert.equal(warm.files["letters.json"].some((l) => l.id === "l9"), false, "withdrawn: gone from the corpus");
+  assert.ok(warm.files["letters.json"].some((l) => l.id === "late"));
+  assert.match(warm.endpointGaps.join("\n"), /11 held as published, 3 read whole|10 held as published, 3 read whole/);
+});
+
+test("LETTERS: a held letter that was delivered is not read again and is kept exactly as published; one still in the outbox is read every pass until it is delivered", async () => {
+  const t = town();
+  t.letters.set("transit", letter("transit", "r20", "r21", "2026-10-05", "in the outbox", "outbox"));
+  const seed = await publishedOf(t);
+  const o = office(t);
+  await build(withSeed(o, () => served(seed)), { lettersSeedUrl: SEED_URL });
+  const asked = lettersAsked(o).filter((r) => r.includes("ids=")).map((r) => new URL(`https://x${r}`).searchParams.get("ids")).join(",");
+  assert.equal(asked, "transit", "the delivered ones are held, the one in transit is read");
+  // the held, delivered letter is the published one even if the office's copy differs (a delivered letter never changes: Wright, 2026-11-25)
+  const kept = seed.map((l) => (l.id === "l2" ? { ...l, body: "as published" } : l));
+  const o2 = office(t);
+  const r = await build(withSeed(o2, () => served(kept)), { lettersSeedUrl: SEED_URL });
+  assert.equal(r.files["letters.json"].find((l) => l.id === "l2").body, "as published");
+});
+
+test("LETTERS, A SEED THAT CANNOT BE TRUSTED IS NO SEED: absent, refused, corrupt, not an array, a row that is no letter, incomplete or foreign reads the whole corpus, said", async () => {
+  const t = town();
+  const seed = await publishedOf(t);
+  const cases = [
+    ["404", () => served({}, 404), /no published file at .* yet \(a first build\)/],
+    ["503", () => served({}, 503), /could not be read \(503/],
+    ["not JSON", () => ({ ok: true, status: 200, statusText: "OK", headers: { get: () => null }, json: async () => { throw new SyntaxError("Unexpected token <"); } }), /could not be read \(not JSON/],
+    ["not an array", () => served({ letters: seed }), /could not be read \(it is not an array of letters/],
+    ["a row that is no letter", () => served([...seed.slice(0, 3), { id: "x" }]), /could not be read \(a row is not a letter/],
+    ["no body key", () => served(seed.map(({ body, ...rest }) => rest)), /could not be read \(a row is not a letter/],
+  ];
+  for (const [name, answer, said] of cases) {
+    const o = office(t);
+    const r = await build(withSeed(o, answer), { lettersSeedUrl: SEED_URL });
+    assert.ok(lettersAsked(o).some((q) => q.startsWith("/letters?full=1&limit=200&offset=0")), `${name}: the whole corpus is read`);
+    assert.equal(lettersAsked(o).some((q) => q.includes("ids=")), false, `${name}: no ids read`);
+    assert.match(r.endpointGaps.join("\n"), said, `${name}: said`);
+    assert.equal(r.files["letters.json"].length, 12);
+  }
+  // INCOMPLETE (two letters) and FOREIGN (another office's ids) seeds are valid files that, on a town of this size, would cost more reads than the whole corpus: the whole corpus is read,
+  // and the corpus is right, exactly the office's letters, none of the seed's
+  for (let i = 12; i < 450; i++) t.letters.set(`l${i}`, letter(`l${i}`, t.handles[i % 30], t.handles[(i + 1) % 30], `2026-09-${String(1 + (i % 28)).padStart(2, "0")}`, `letter ${i} body`));
+  const big = await publishedOf(t);
+  for (const [name, rows] of [["incomplete", big.slice(0, 2)], ["foreign", big.map((l) => ({ ...l, id: `other-${l.id}` }))]]) {
+    const o = office(t);
+    const r = await build(withSeed(o, () => served(rows)), { lettersSeedUrl: SEED_URL });
+    assert.ok(lettersAsked(o).some((q) => q.startsWith("/letters?full=1&limit=200&offset=0")), `${name}: the whole corpus`);
+    assert.equal(lettersAsked(o).some((q) => q.includes("ids=")), false, `${name}: no ids reads`);
+    assert.equal(jsonText(r.files["letters.json"]), jsonText(big), `${name}: and exactly the office's letters, none of the seed's`);
+  }
+  // a seed that is only a little behind reads the few it lacks (the same big town, ten letters newer than the seed)
+  const o = office(t);
+  const behind = await build(withSeed(o, () => served(big.filter((l) => !["l440", "l441", "l442"].includes(l.id)))), { lettersSeedUrl: SEED_URL });
+  assert.equal(lettersAsked(o).filter((q) => q.includes("ids=")).length, 1, "one ids read for the three it lacked");
+  assert.equal(jsonText(behind.files["letters.json"]), jsonText(big));
+});
+
+test("LETTERS: no stale publication on failure, and no seed where there is a cache or no opt-in", async () => {
+  const t = town();
+  const seed = await publishedOf(t);
+  t.letters.set("late", letter("late", "r22", "r23", "2026-09-01", "merged late"));
+  // the ids read fails: the build does not publish the seed's letters as if they were current (the bulk door did not answer, the existing fallback speaks), and says so
+  const o = office(t, { refuseIds: false });
+  const failing = { requests: o.requests, fetchImpl: async (url, init) => { if (String(url).includes("ids=")) throw new Error("socket hang up"); if (String(url).startsWith("https://seed.invalid")) return served(seed); return o.fetchImpl(url, init); } };
+  const r = await build(failing, { lettersSeedUrl: SEED_URL, retries: 1 });
+  assert.match(r.problems.join("\n"), /letters: the bulk door did not answer \(.*socket hang up.*\); built from the resident cards instead/);
+  assert.notEqual(jsonText(r.files["letters.json"]), jsonText(seed), "the seed's letters were not published in its place");
+  // a letter cache wins over a seed: the seed is not even asked
+  const { root } = snapshot();
+  const c = office(t);
+  await build(withSeed(c, () => served(seed)), { lettersSeedUrl: SEED_URL, letterCachePath: join(root, "cache", "letters.json") });
+  assert.equal(c.requests.includes("seed"), false);
+  // no seed named: nothing is asked of the site
+  const n = office(t);
+  await build(withSeed(n, () => served(seed)));
+  assert.equal(n.requests.includes("seed"), false);
+});
+
+test("LETTERS: the default seed is production's published file for the production API only; the production entry passes it through", async () => {
+  const { defaultLettersSeedUrl, readLettersSeed } = await import("../tools/lib/letters-seed.mjs");
+  const prod = { api: "https://postmark.town/api", defaultApi: "https://postmark.town/api", townBase: "https://postmark.town" };
+  assert.equal(defaultLettersSeedUrl({ env: {}, ...prod }), "https://postmark.town/data/letters.json");
+  assert.equal(defaultLettersSeedUrl({ env: {}, ...prod, api: "https://office.example/api" }), null, "another office: no production seed");
+  assert.equal(defaultLettersSeedUrl({ env: {}, ...prod, api: "http://127.0.0.1:4380/api" }), null, "the box's loopback office reads as ever");
+  assert.equal(defaultLettersSeedUrl({ env: { POSTMARK_LETTERS_SEED_URL: "https://other.example/letters.json" }, ...prod, api: "https://office.example/api" }), "https://other.example/letters.json");
+  assert.equal(defaultLettersSeedUrl({ env: { POSTMARK_LETTERS_SEED_URL: "" }, ...prod }), null);
+  assert.equal((await readLettersSeed({ url: null })).state, "unset");
+  assert.equal((await readLettersSeed({ url: "x", fetchImpl: async () => { throw new Error("offline"); } })).state, "unreadable");
+  const { readFileSync } = await import("node:fs");
+  const entry = readFileSync(new URL("../tools/fetch-town.mjs", import.meta.url), "utf8");
+  assert.match(entry, /const LETTERS_SEED_URL = defaultLettersSeedUrl\(\{ env: process\.env, api: API, defaultApi: DEFAULT_API, townBase: TOWN_BASE \}\);/);
+  assert.match(entry, /lettersSeedUrl: LETTERS_SEED_URL \}\)/);
+});

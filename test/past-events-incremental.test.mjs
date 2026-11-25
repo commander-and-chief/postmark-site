@@ -169,9 +169,21 @@ test("WITHDRAWAL vs FAILURE: a held event the office stops serving leaves the ca
   for (const status of [429, 500, 502, 503, "throw"]) {
     const r = await gone(status);
     assert.equal(r.events.past.events.some((e) => e.id === "h/e41"), true, `${status}: a failure is not a withdrawal: the row stays`);
-    assert.deepEqual(r.events.evidence["h/e41"], seed.evidence["h/e41"], `${status}: and the good read held stands`);
-    assert.ok(r.gaps.some((g) => /1 one-event reads were not served and those events keep the good read the last build held/.test(g)), `${status}: said`);
+    assert.deepEqual(r.events.evidence["h/e41"], { read: "unavailable" }, `${status}: the evidence is "couldn't be read" as on main, NEVER the held read republished under this pass's time`);
+    assert.notEqual(r.events.evidence["h/e41"].read, "ok");
+    assert.ok(r.gaps.some((g) => /1 of 45 one-event reads were not served, so those events' pages say their evidence couldn't be read/.test(g)), `${status}: said`);
+    assert.equal(r.gaps.some((g) => /keep the good read/.test(g)), false, `${status}: there is no keep-the-held-read fallback to name`);
   }
+  // REPEATED failure, through the actual consumer: the same transient failure pass after pass never turns into a read the office did not just give
+  let carried = seed;
+  for (let pass = 1; pass <= 3; pass++) {
+    const r = await run({ seed: carried, fetchImpl: office({ events: TOWN, fail: { "read h/e41": 503 } }) });
+    assert.deepEqual(r.events.evidence["h/e41"], { read: "unavailable" }, `pass ${pass}: still unavailable`);
+    assert.equal(r.events.past.events.some((e) => e.id === "h/e41"), true, `pass ${pass}: the held ROW stays on a transient failure`);
+    carried = r.events;
+  }
+  const recovered = await run({ seed: carried, fetchImpl: office({ events: TOWN }) });
+  assert.deepEqual(recovered.events.evidence["h/e41"], { read: "ok", event: READS["h/e41"] }, "and the next answered read is the office's, whole");
   // an event the list served THIS pass is served: its refused read is `unavailable` as on main, and the row stays
   const onPage = await run({ seed, fetchImpl: office({ events: TOWN, fail: { "read h/e3": 404 } }) });
   assert.equal(onPage.events.past.events.some((e) => e.id === "h/e3"), true);
@@ -262,9 +274,9 @@ test("THE SEED IS OFF FOR ANOTHER OFFICE: the default is the production API's pu
   assert.equal(defaultEventsSeedUrl({ env: { POSTMARK_EVENTS_SEED_URL: "" }, ...prod }), null, "the empty string is none");
   const entry = readFileSync(join(ROOT, "tools/fetch-town.mjs"), "utf8");
   assert.match(entry, /const EVENTS_SEED_URL = defaultEventsSeedUrl\(\{ env: process\.env, api: API, defaultApi: DEFAULT_API, townBase: TOWN_BASE \}\);/);
-  assert.match(entry, /letterCachePath: LETTER_CACHE, eventsSeedUrl: EVENTS_SEED_URL \}\)/);
+  assert.match(entry, /letterCachePath: LETTER_CACHE, eventsSeedUrl: EVENTS_SEED_URL, lettersSeedUrl: LETTERS_SEED_URL \}\)/);
   const data = readFileSync(join(ROOT, "tools/lib/fetch-town-data.mjs"), "utf8");
-  assert.match(data, /eventsSeedUrl = null,\n\} = \{\}\) \{/, "an option with a null default: unset, the bare call is unchanged");
+  assert.match(data, /eventsSeedUrl = null,\n[^}]*lettersSeedUrl = null,\n\} = \{\}\) \{/, "options with a null default: unset, the bare call is unchanged");
   assert.match(data, /const seedRead = await readEventsSeed\(\{ url: eventsSeedUrl, fetchImpl \}\);/);
   assert.equal(PAST_PAGES_MAX, 25, "the full-read budgets are what they were");
   assert.equal(EVIDENCE_MAX, 400);
@@ -286,11 +298,10 @@ test("the pure pieces: the overlap anchor, the join, the merge of rows, the merg
   assert.equal(j.evidence["h/e1"].event.a, 1);
   assert.deepEqual(mergePast({ fresh: [ev(1, 1)], held: [ev(1, 1, { title: "old" }), ev(2, 9), ev(3, 0.5)], complete: false }).map((e) => e.id), ["h/e1", "h/e2"], "a held event NEWER than the oldest read one is not resurrected; older ones follow");
   assert.deepEqual(mergePast({ fresh: [ev(1, 1)], held: [ev(2, 9)], complete: true }).map((e) => e.id), ["h/e1"]);
-  const held = { "h/e1": { read: "ok", event: { was: 1 } }, "h/e2": { read: "ok", event: { was: 2 } } };
-  const m = mergeEvidence({ events: [ev(1, 5), ev(2, 6), ev(3, 7), ev(4, 8), ev(5, 9)], held, fresh: { "h/e1": { read: "unavailable" }, "h/e2": { read: "ok", event: { now: 2 } }, "h/e3": { read: "unavailable" } } });
-  assert.deepEqual(m.evidence["h/e1"], held["h/e1"], "failed, a good read held: it stands");
+  const m = mergeEvidence({ events: [ev(1, 5), ev(2, 6), ev(3, 7), ev(4, 8), ev(5, 9)], held: { "h/e1": { read: "ok", event: { was: 1 } } }, fresh: { "h/e1": { read: "unavailable" }, "h/e2": { read: "ok", event: { now: 2 } }, "h/e3": { read: "unavailable" } } });
+  assert.deepEqual(m.evidence["h/e1"], { read: "unavailable" }, "failed: unavailable, even with a good read held (a `held` argument is not even read)");
   assert.deepEqual(m.evidence["h/e2"], { read: "ok", event: { now: 2 } }, "answered: the fresh read, whole");
-  assert.deepEqual(m.evidence["h/e3"], { read: "unavailable" }, "failed, none held");
+  assert.deepEqual(m.evidence["h/e3"], { read: "unavailable" }, "failed");
   assert.equal(m.evidence["h/e4"], undefined, "not asked: no entry");
-  assert.deepEqual([m.refreshed, m.kept, m.failed], [1, 1, 1]);
+  assert.deepEqual([m.refreshed, m.failed], [1, 2]);
 });
