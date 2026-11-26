@@ -245,7 +245,7 @@ export function stancesOf(handles, doorsteps) {
     // Full pages provide canonical mark identities; short pages provide at
     // least the office's household-wide count, never count × residents.
     const n = allFull ? ids.size : Math.max(ids.size, ...shared.map((entry) => entry.count));
-    if (!allFull && (shared.some((entry) => entry.count !== n) || ids.size > n)) uncertain = true;
+    if (!allFull) uncertain = true;
     if (n > 0) by.push({ handle: shared[0].handle, n, household: true });
   }
   by.sort((a, b) => b.n - a.n);
