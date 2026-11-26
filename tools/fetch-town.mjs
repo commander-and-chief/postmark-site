@@ -9,6 +9,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildOfficeData, fetchBlueprints, fetchRollcall, fetchCrossings, jsonText, shortFetchPlan } from "./lib/fetch-town-data.mjs";
+import { defaultEventsSeedUrl } from "./lib/past-events-cache.mjs";
+import { defaultLettersSeedUrl } from "./lib/letters-seed.mjs";
 import { worldPin } from "./lib/world-pin-publish.mjs";
 import { readProjectsFromCheckout } from "./lib/town-projects.mjs";
 import { readQuestRegistryFromCheckout } from "./lib/town-quest-registry.mjs";
@@ -40,6 +42,16 @@ const PUBLIC_API = (process.env.POSTMARK_PUBLIC_API || DEFAULT_API).replace(/\/+
 // that moved (fetch-town-data.mjs § THE LETTERS SINCE LAST PASS). Unset, every
 // run reads the whole corpus, as it always has.
 const LETTER_CACHE = process.env.POSTMARK_LETTER_CACHE || null;
+// Where the past calendar is kept between builds (CORE-180, tools/lib/past-events-cache.mjs): the site's own last PUBLISHED events.json. Every pass writes it to
+// public/atelier/postmark/data, so it survives a clean Actions checkout and the box refresh's reset and clean, which the tracked src/data/postmark/events.json does not.
+// It is one static GET, not the office's keyless API; with it a build reads the newest list page(s) of the lasting list only until it meets an event it already holds (every
+// event's one-event read is still made every pass). It is the DEFAULT ONLY when this run reads the production API (the default, or POSTMARK_API / --api naming the same
+// address): a build of another office is never seeded with production's events. Set POSTMARK_EVENTS_SEED_URL to opt another build in, or to the empty string for none.
+const EVENTS_SEED_URL = defaultEventsSeedUrl({ env: process.env, api: API, defaultApi: DEFAULT_API, townBase: TOWN_BASE });
+// The same for the letter corpus (CORE-180, tools/lib/letters-seed.mjs): the site's own last PUBLISHED letters.json, used only where there is no letter cache above (the Actions
+// release lane's clean checkout), so the build reads the office's inventory and only the letters it does not hold or that are still in transit, not the whole corpus. Default on
+// for the production API only; POSTMARK_LETTERS_SEED_URL opts another build in, the empty string is none.
+const LETTERS_SEED_URL = defaultLettersSeedUrl({ env: process.env, api: API, defaultApi: DEFAULT_API, townBase: TOWN_BASE });
 const TOWN_ARG = arg("--town", null);
 const TOWN = TOWN_ARG ? resolve(TOWN_ARG) : null;
 if (TOWN) refuseLinkedCheckout(TOWN);
@@ -118,6 +130,8 @@ function writeManifest(asOf, endpointGaps, problems) {
       "crossings.json": "every settlement the Worldkeeper has blessed: the world repo's settlement/S<n> tags (number, sha, blessed_at = the tagged commit's date, the receipt = the tag's message verbatim) and the published count from WORLD/settlement-publications.json at each tag",
       "rollcall.json": "the meeplings' bench: the office's deploy/box-rollcall-manifest.json read at the release the office serves (GET /release -> tag), trimmed to each unit's name, label, stage, cadence and heartbeat allowance",
       "calendar.json": "the town's calendar, the office's GET /calendar verbatim: events now, coming and ended in the last 7 days, with the office's phase; the last committed snapshot while that door is not live",
+      "events.json": "the lasting events (CORE-82): the office's list of past events (town read:calendar args {past:true}, newest end first, followed page by page) and, per event, its one-event read (GET /calendar/<host>/<slug>: rooms, who was there, the spark and the gallery once the doors have opened); the committed snapshot's events while the lasting list is not served, said in the file",
+      "sparks.json": "the Spark register (CORE-121): the standing Sparks in the office's anonymous public mark register (GET /world2/marks?all=true&full=true, kind spark, canonical id the slug), each read into the common Spark view; public-visible only, and `read: unavailable` (never an empty list) when that register cannot be read",
       "quest-posts.json": "the town's quests as its posts, the office's GET /posts?class=quest verbatim: each quest post with its registry terms (the Quest Guild's cards); the last committed snapshot while that door is not live or the quests are not yet posted",
       "idea-posts.json": "the town's ideas as posts, the office's GET /posts?class=idea verbatim: each idea post with its stage history, awards, backing and sign-ups (the Think Tank's post cards, beside the legacy idea marks); the last committed snapshot while that door is not live or the office does not carry the idea class yet (422)",
       "renames.json": "the town's handle renames, { <old handle>: <new handle> }, from the pins of the office's GET /households (the store's registry: a renamed handle kept as retired, renamed_to the new one); the site links a letter's or a mark's author through it to the page the resident has now, and prints a handle with no page as text; the last committed snapshot while that door is not live",
@@ -140,7 +154,7 @@ try {
   if (TOWN && !existsSync(join(TOWN, "MEEPS"))) {
     console.warn(`WARN: supplied --town has no MEEPS directory; meeps.json will use the committed snapshot: ${TOWN}`);
   }
-  const result = await buildOfficeData({ apiBase: API, dataDir: DATA_DIR, townRoot: TOWN, letterCachePath: LETTER_CACHE });
+  const result = await buildOfficeData({ apiBase: API, dataDir: DATA_DIR, townRoot: TOWN, letterCachePath: LETTER_CACHE, eventsSeedUrl: EVENTS_SEED_URL, lettersSeedUrl: LETTERS_SEED_URL });
   for (const [name, value] of Object.entries(result.files)) writeDataFile(name, value);
   // ── WHETHER THE INVITATION ROLL IS LIVE (POS-576) ─────────────────────────
   // A build input, not a public file: the join carries an invite only for a
