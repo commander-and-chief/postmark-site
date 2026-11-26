@@ -11,7 +11,7 @@
 // folded into a zero. "No posts" is a count of zero from an answer; "could not
 // read the posts" is something else.
 
-import { cardNumbersOf, needsOf, clocksOf, parseAt, stancesOf } from "../household-dashboard/fold.mjs";
+import { cardNumbersOf, needsOf, clocksOf, parseAt } from "../household-dashboard/fold.mjs";
 
 const asArray = (v) => (Array.isArray(v) ? v : []);
 const str = (v) => (v == null ? "" : String(v));
@@ -73,8 +73,10 @@ export function mailOf(handles, doorsteps) {
     waiting += n?.pending ?? 0;
   }
   const needs = needsOf(handles, doorsteps);
-  const stanceCounts = stancesOf(handles, doorsteps);
-  return { newInbound, awaitingStance: stanceCounts.total, waiting, bounced: needs.bounces.length, complete: answered.length === handles.length && stanceCounts.complete };
+  const stanceCounts = needs.stances;
+  return { newInbound, awaitingStance: stanceCounts.total, waiting, bounced: needs.bounces.length,
+    stanceComplete: stanceCounts.complete, stanceUncertain: stanceCounts.uncertain,
+    complete: answered.length === handles.length && stanceCounts.complete && !stanceCounts.uncertain };
 }
 
 /** Around town: the next events on the town's calendar, from every house. Null when the calendar did not answer. */
