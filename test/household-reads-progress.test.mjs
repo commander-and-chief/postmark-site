@@ -421,6 +421,8 @@ test("#4679: both views disclose missing and uncertain stances, but keep a verif
   const row = (n) => ({ stances: { stances_awaiting: n, stances_awaiting_ground: "household", awaiting: [], complete: false } });
   const cases = [
     [{ a: {}, b: {} }, /stance count is unavailable or uncertain/, false],
+    [{ a: row(0), b: row(0) }, /stance count is unavailable or uncertain/, false],
+    [{ a: row(5), b: row(5) }, /at least 5/i, false],
     [{ a: row(3), b: row(5) }, /at least 5/i, false],
     [{ a: { stances: { stances_awaiting: 0 } }, b: { stances: { stances_awaiting: 0 } } }, /Nothing/, true],
   ];
